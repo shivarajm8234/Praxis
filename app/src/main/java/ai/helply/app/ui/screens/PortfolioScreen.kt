@@ -1,12 +1,16 @@
 package ai.helply.app.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PortfolioScreen() {
     var selectedTheme by remember { mutableStateOf("Modern Developer") }
@@ -20,57 +24,91 @@ fun PortfolioScreen() {
         "Research Portfolio",
         "Fresher Portfolio",
         "Creative Developer",
-        "Dark Developer"
+        "Clean Light Theme"
     )
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("AI Portfolio Generator & Deployment", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        item {
+            Column {
+                Text(
+                    text = "AUTOMATED PORTFOLIO PUBLISHER",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "AI Portfolio Generator",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Select Portfolio Theme:", fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
-                themes.chunked(2).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        row.forEach { theme ->
-                            FilterChip(
-                                selected = selectedTheme == theme,
-                                onClick = { selectedTheme = theme },
-                                label = { Text(theme) },
-                                modifier = Modifier.weight(1f)
-                            )
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Select Portfolio Theme:", fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    themes.chunked(2).forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            row.forEach { theme ->
+                                FilterChip(
+                                    selected = selectedTheme == theme,
+                                    onClick = { selectedTheme = theme },
+                                    label = { Text(theme, fontSize = 11.sp) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        deployStatus = "Synthesizing HTML static bundle...\nCreating GitHub Repository...\nConfiguring GitHub Actions...\nLive URL: https://student.github.io/portfolio/"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Deploy Portfolio to GitHub Pages")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            deployStatus = "Synthesizing HTML static bundle...\nCreating GitHub Repository...\nConfiguring GitHub Actions...\nLive URL: https://student.github.io/portfolio/"
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Deploy Portfolio to GitHub Pages")
+                    }
                 }
             }
         }
 
         if (deployStatus.isNotEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Deployment Progress:", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(deployStatus)
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Deployment Progress:",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = deployStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
                 }
             }
         }

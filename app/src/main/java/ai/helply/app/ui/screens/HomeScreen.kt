@@ -491,7 +491,7 @@ fun HomeScreen(navController: NavController) {
 
                     if (llmExecutionTrace.isNotEmpty()) {
                         Surface(
-                            color = Color(0xFF0F172A),
+                            color = Color(0xFFF1F5F9),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -501,7 +501,7 @@ fun HomeScreen(navController: NavController) {
                                         text = trace,
                                         fontSize = 11.sp,
                                         fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFF38BDF8)
+                                        color = Color(0xFF0284C7)
                                     )
                                 }
                             }

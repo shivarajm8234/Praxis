@@ -1,9 +1,7 @@
 package ai.helply.app.core.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -12,50 +10,33 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
+private val FullWhiteColorScheme = lightColorScheme(
     primary = PrimaryIndigo,
     secondary = AccentTeal,
     tertiary = PrimaryBlue,
-    background = NeutralDark,
-    surface = SurfaceDark,
-    surfaceVariant = CardDark,
+    background = Color(0xFFF8FAFC), // Pure clean light slate background
+    surface = Color(0xFFFFFFFF),    // Pure white cards & dialogs
+    surfaceVariant = Color(0xFFF1F5F9), // Light grey input fields & chips
     onPrimary = Color.White,
     onSecondary = Color.White,
-    onBackground = TextPrimaryDark,
-    onSurface = TextPrimaryDark,
-    onSurfaceVariant = TextSecondaryDark,
-    primaryContainer = NavActivePill,
-    onPrimaryContainer = NavActiveIcon
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = PrimaryIndigo,
-    secondary = AccentTeal,
-    tertiary = PrimaryBlue,
-    background = NeutralLight,
-    surface = SurfaceLight,
-    surfaceVariant = Color(0xFFF1F5F9),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onBackground = TextPrimaryLight,
-    onSurface = TextPrimaryLight,
-    onSurfaceVariant = TextSecondaryLight,
-    primaryContainer = NavActivePill,
-    onPrimaryContainer = NavActiveIcon
+    onBackground = Color(0xFF0F172A), // Dark slate text
+    onSurface = Color(0xFF0F172A),    // Dark slate text on surface
+    onSurfaceVariant = Color(0xFF64748B), // Subtitle text
+    primaryContainer = NavActivePill, // Light purple/indigo pill background #EDE9FE
+    onPrimaryContainer = NavActiveIcon // Active icon color #4F46E5
 )
 
 @Composable
 fun HelplyTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = FullWhiteColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            window.statusBarColor = Color(0xFFF8FAFC).toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
         }
     }
 
