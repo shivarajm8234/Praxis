@@ -1,5 +1,6 @@
 package ai.helply.app.ui
 
+import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -7,17 +8,16 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ai.helply.app.ai.GemmaEngineManager
+import ai.helply.app.core.NotificationHelper
 import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.AcademicDao
 import ai.helply.app.data.db.PlacementDao
 import ai.helply.app.data.entities.*
-import ai.helply.app.domain.ATSEngine
-import ai.helply.app.domain.ATSResult
-import ai.helply.app.domain.PortfolioBuilder
-import ai.helply.app.domain.PortfolioTheme
+import ai.helply.app.domain.*
 import ai.helply.app.tools.ToolRegistry
 import ai.helply.app.tools.ToolResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +29,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HelplyViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val gemmaEngine: GemmaEngineManager,
     private val toolRegistry: ToolRegistry,
     private val memoryDao: MemoryDao,
@@ -64,7 +65,23 @@ class HelplyViewModel @Inject constructor(
     private val _academicResult = MutableStateFlow<String?>(null)
     val academicResult: StateFlow<String?> = _academicResult.asStateFlow()
 
-    // ─── Placement State ────────────────────────────────
+    private val _autonomousPipelineResult = MutableStateFlow<AutonomousPipelineResult?>(null)
+    val autonomousPipelineResult: StateFlow<AutonomousPipelineResult?> = _autonomousPipelineResult.asStateFlow()
+
+    // ─── College Email & Lock State ─────────────────────
+    private val _emails = MutableStateFlow<List<CollegeEmail>>(emptyList())
+    val emails: StateFlow<List<CollegeEmail>> = _emails.asStateFlow()
+
+    private val _examLockState = MutableStateFlow(ExamLockState())
+    val examLockState: StateFlow<ExamLockState> = _examLockState.asStateFlow()
+
+    private val _emailScanSummary = MutableStateFlow<String?>(null)
+    val emailScanSummary: StateFlow<String?> = _emailScanSummary.asStateFlow()
+
+    // ─── Placement & Company 360 State ──────────────────
+    private val _companyAnalysis = MutableStateFlow<CompanyShortlistAnalysis?>(null)
+    val companyAnalysis: StateFlow<CompanyShortlistAnalysis?> = _companyAnalysis.asStateFlow()
+
     private val _atsResult = MutableStateFlow<ATSResult?>(null)
     val atsResult: StateFlow<ATSResult?> = _atsResult.asStateFlow()
 
@@ -82,12 +99,13 @@ class HelplyViewModel @Inject constructor(
                 _memories.value = list
             }
         }
-        // Seed default memories if database is empty
+        // Seed default memories & emails
         viewModelScope.launch {
-            delay(500)
+            delay(300)
             if (_memories.value.isEmpty()) {
                 seedDefaultMemories()
             }
+            _emails.value = EmailScannerEngine.sampleCollegeEmails()
         }
     }
 
@@ -120,7 +138,6 @@ class HelplyViewModel @Inject constructor(
             addTrace("🔍 [LLM Router] Identified target agent: $agentName")
             delay(400)
 
-            // Parse the tool call string and actually execute it
             val toolName = toolCallStr.substringBefore("(")
             val paramsStr = toolCallStr.substringAfter("(").trimEnd(')')
             val params = parseToolParams(paramsStr)
@@ -149,101 +166,78 @@ class HelplyViewModel @Inject constructor(
         _lastToolResult.value = null
     }
 
-    // ─── Academics Operations ───────────────────────────
-    fun extractRequirements(inputText: String) {
+    // ─── Feature 1: Autonomous Academic Pipeline ────────
+    fun runAutonomousAcademicAgent(inputText: String) {
         viewModelScope.launch {
-            _academicResult.value = null
-            delay(300) // Brief processing indication
+            _isAgentRunning.value = true
+            _autonomousPipelineResult.value = null
 
-            // Use Gemma engine for analysis if loaded, otherwise use keyword extraction
-            val analysisLines = mutableListOf<String>()
-
-            val subjectKeywords = mapOf(
-                "machine learning" to "Machine Learning",
-                "ml" to "Machine Learning",
-                "dbms" to "Database Management Systems",
-                "database" to "Database Management Systems",
-                "android" to "Android Development",
-                "kotlin" to "Kotlin Programming",
-                "python" to "Python Programming",
-                "ai" to "Artificial Intelligence",
-                "data structure" to "Data Structures & Algorithms",
-                "dsa" to "Data Structures & Algorithms",
-                "math" to "Engineering Mathematics",
-                "os" to "Operating Systems",
-                "network" to "Computer Networks"
+            val result = AutonomousAcademicAgent.executeAcademicPipeline(
+                context = context,
+                rawTaskText = inputText,
+                subject = "Computer Science & AI"
             )
 
-            val lowerInput = inputText.lowercase()
-            val detectedSubject = subjectKeywords.entries
-                .firstOrNull { lowerInput.contains(it.key) }
-                ?.value ?: "General Assignment"
+            _autonomousPipelineResult.value = result
+            _isAgentRunning.value = false
 
-            analysisLines.add("📚 Requirements Extracted:")
-            analysisLines.add("• Subject: $detectedSubject")
-
-            // Detect deliverables
-            val deliverables = mutableListOf<String>()
-            if (lowerInput.contains("report")) deliverables.add("Written Report (PDF)")
-            if (lowerInput.contains("ppt") || lowerInput.contains("presentation")) deliverables.add("Presentation (PPT)")
-            if (lowerInput.contains("code") || lowerInput.contains("program") || lowerInput.contains("jupyter") || lowerInput.contains("notebook")) deliverables.add("Source Code / Notebook")
-            if (lowerInput.contains("lab")) deliverables.add("Lab Journal Entry")
-            if (deliverables.isEmpty()) deliverables.add("Document Submission")
-            analysisLines.add("• Deliverables: ${deliverables.joinToString(", ")}")
-
-            // Detect priority
-            val priority = when {
-                lowerInput.contains("urgent") || lowerInput.contains("tomorrow") || lowerInput.contains("asap") -> "🔴 CRITICAL"
-                lowerInput.contains("important") || lowerInput.contains("exam") -> "🟡 HIGH"
-                else -> "🟢 MEDIUM"
-            }
-            analysisLines.add("• Priority: $priority")
-            analysisLines.add("• Word Count: ${inputText.split("\\s+".toRegex()).size} words analyzed")
-
-            // Create the task in DB
-            val assignment = AssignmentEntity(
-                subject = detectedSubject,
-                title = "$detectedSubject Assignment",
-                requirements = inputText,
-                deadline = System.currentTimeMillis() + (3 * 86400000L),
-                priority = priority.substringAfter(" ")
+            // Save automatically to Room DB Memory
+            addMemory(
+                title = "Autonomous Deliverable: ${result.title}",
+                type = "Project",
+                description = "PPT (${result.pptSlideCount} slides) & PDF Research Report generated automatically at ${result.generatedPdfPath}",
+                source = "Autonomous AI Agent"
             )
-            academicDao.insertAssignment(assignment)
-            analysisLines.add("\n✅ Task auto-created in Academic DB (ID: ${assignment.id.take(8)}...)")
-
-            _academicResult.value = analysisLines.joinToString("\n")
         }
     }
 
-    fun generateReport(inputText: String) {
+    // ─── Feature 2: College Email Scanner & 5-Day App Lock ───
+    fun scanCollegeEmails() {
         viewModelScope.launch {
-            _academicResult.value = null
-            delay(400)
+            val emailsList = _emails.value
+            val scan = EmailScannerEngine.analyzeEmails(emailsList)
 
-            val lines = mutableListOf<String>()
-            lines.add("📝 Report Generation Pipeline:")
-            lines.add("• Step 1: Extracting key concepts from input text...")
-            lines.add("• Step 2: Structuring into LaTeX/Markdown template...")
-            lines.add("• Step 3: Generating Table of Contents & References...")
-            lines.add("• Step 4: Compiling PPT with 8 auto-generated slides...")
-            lines.add("")
-            lines.add("✅ Report Template: report_${System.currentTimeMillis() / 1000}.pdf")
-            lines.add("✅ Presentation: slides_${System.currentTimeMillis() / 1000}.pptx")
-            lines.add("📁 Files saved to: /Documents/Helply/Academic/")
+            val summaryLines = mutableListOf<String>()
+            summaryLines.add("📧 College Email Ingestion & Circular Scan Complete:")
+            summaryLines.add("• Processed ${scan.processedCount} recent emails from college portal")
+            summaryLines.add("• Exam Circulars Detected: ${scan.examCircularsFound}")
 
-            _academicResult.value = lines.joinToString("\n")
+            if (scan.activeLockdownTriggered) {
+                summaryLines.add("\n🚨 CRITICAL EXAM CIRCULAR DETECTED!")
+                summaryLines.add("• Exam: ${scan.examTitle}")
+                summaryLines.add("• Date: ${scan.examDate}")
+                summaryLines.add("• 5-Day Social Media Lockdown ENGAGED 🔒")
+
+                _examLockState.value = ExamLockState(
+                    isLockActive = true,
+                    examTitle = scan.examTitle ?: "End-Semester Examinations",
+                    examDateMillis = System.currentTimeMillis() + (5 * 86400000L),
+                    daysRemaining = scan.daysUntilExam,
+                    lockedApps = ExamLockState.defaultApps()
+                )
+
+                // Trigger Notification
+                NotificationHelper.sendNotification(
+                    context = context,
+                    title = "🚨 Exam Lock Activated (5-Day Rule)",
+                    message = "Exam circular detected for ${scan.examDate}. Social media apps locked to ensure focus."
+                )
+            }
+
+            _emailScanSummary.value = summaryLines.joinToString("\n")
         }
     }
 
-    // ─── Placement Operations ───────────────────────────
-    fun calculateATS(resumeText: String, jobDescription: String) {
+    // ─── Feature 3: Company 360° & Resume Shortlist Engine ───
+    fun analyzeCompanyShortlist(companyName: String, candidateResume: String) {
         viewModelScope.launch {
-            _atsResult.value = null
+            _companyAnalysis.value = null
             delay(400)
-            val result = withContext(Dispatchers.Default) {
-                ATSEngine.evaluateResume(resumeText, jobDescription)
-            }
-            _atsResult.value = result
+            val analysis = CompanyIntelligenceEngine.getCompany360(companyName, candidateResume)
+            _companyAnalysis.value = analysis
+
+            // Also calculate traditional ATS score
+            _atsResult.value = ATSEngine.evaluateResume(candidateResume, analysis.company.keyTechStack.joinToString(", "))
         }
     }
 
@@ -266,32 +260,23 @@ class HelplyViewModel @Inject constructor(
         }
     }
 
-    fun deleteAllMemories() {
-        viewModelScope.launch {
-            memoryDao.deleteAllMemories()
-        }
-    }
-
     // ─── Portfolio Operations ────────────────────────────
     fun deployPortfolio(themeName: String) {
         viewModelScope.launch {
             _deployStatus.value = emptyList()
 
             addDeployLog("🔄 Initializing Portfolio Deployment Pipeline...")
-            delay(500)
+            delay(400)
 
             val theme = PortfolioTheme.values().find { it.themeName == themeName }
                 ?: PortfolioTheme.MODERN_DEVELOPER
 
             addDeployLog("🎨 Applying theme: ${theme.themeName}")
-            delay(400)
-
-            addDeployLog("📄 Synthesizing HTML from Academic Memory (${_memories.value.size} entries)...")
-            delay(500)
+            delay(300)
 
             val html = withContext(Dispatchers.Default) {
                 PortfolioBuilder.buildHtmlPortfolio(
-                    studentName = "Satoru",
+                    studentName = "Satoru Gojo",
                     degree = "B.Tech Computer Science",
                     college = "Engineering College",
                     bio = "AI/ML enthusiast building on-device intelligent systems.",
@@ -305,9 +290,9 @@ class HelplyViewModel @Inject constructor(
             delay(300)
 
             addDeployLog("🚀 Deploying to GitHub Pages...")
-            delay(600)
+            delay(500)
 
-            addDeployLog("🌐 Live URL: https://student.github.io/portfolio/")
+            addDeployLog("🌐 Live URL: https://satoru.github.io/portfolio/")
             addDeployLog("✅ Portfolio deployment completed successfully!")
         }
     }
@@ -335,10 +320,9 @@ class HelplyViewModel @Inject constructor(
 
     private suspend fun seedDefaultMemories() {
         val defaults = listOf(
-            AcademicMemoryEntity(type = "Project", title = "Helply AI Assistant", description = "On-device AI OS for students using Gemma 4 E4B & LiteRT.", source = "GitHub Ingestion", confidenceScore = 0.98f),
-            AcademicMemoryEntity(type = "Certificate", title = "Android App Development with Kotlin", description = "Certified by Google Developers.", source = "User Upload", confidenceScore = 0.99f),
-            AcademicMemoryEntity(type = "Project", title = "Smart City Infrastructure AI", description = "3D GIS rendering with WebGL & Three.js", source = "Hackathon Win", confidenceScore = 0.96f),
-            AcademicMemoryEntity(type = "Exam", title = "DBMS End Sem Exam", description = "Grade: A+ (Scheduled in Calendar)", source = "College Email Circular", confidenceScore = 1.0f)
+            AcademicMemoryEntity(type = "Project", title = "Helply AI Student OS", description = "On-device AI OS for students using Gemma 4 E4B & LiteRT.", source = "GitHub Ingestion", confidenceScore = 0.98f),
+            AcademicMemoryEntity(type = "Certificate", title = "Android Development with Kotlin", description = "Certified by Google Developers.", source = "User Upload", confidenceScore = 0.99f),
+            AcademicMemoryEntity(type = "Exam", title = "DBMS End Sem Exam", description = "Scheduled Oct 28, 2024", source = "College Email Circular", confidenceScore = 1.0f)
         )
         defaults.forEach { memoryDao.insertMemory(it) }
     }

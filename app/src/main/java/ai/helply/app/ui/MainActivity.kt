@@ -41,6 +41,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Academics : Screen("academics", "Academics", Icons.Default.Edit)
     object NotepadMemory : Screen("memory", "Memory", Icons.Default.Star)
     object Placements : Screen("placements", "Placements", Icons.Default.Person)
+    object Profile : Screen("profile", "Profile", Icons.Default.Person)
     object Settings : Screen("settings", "AI Models", Icons.Default.Settings)
 }
 
@@ -51,7 +52,6 @@ fun HelplyAppNavigation() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Home.route
 
-    // Single shared ViewModel across all screens
     val viewModel: HelplyViewModel = hiltViewModel()
 
     val screens = listOf(
@@ -59,6 +59,7 @@ fun HelplyAppNavigation() {
         Screen.Academics,
         Screen.NotepadMemory,
         Screen.Placements,
+        Screen.Profile,
         Screen.Settings
     )
 
@@ -83,7 +84,7 @@ fun HelplyAppNavigation() {
                         label = {
                             Text(
                                 text = screen.title,
-                                style = MaterialTheme.typography.labelMedium
+                                style = MaterialTheme.typography.labelSmall
                             )
                         },
                         icon = {
@@ -113,6 +114,7 @@ fun HelplyAppNavigation() {
             composable(Screen.Academics.route) { AcademicsScreen(viewModel) }
             composable(Screen.NotepadMemory.route) { MemoryScreen(viewModel) }
             composable(Screen.Placements.route) { PlacementScreen(viewModel) }
+            composable(Screen.Profile.route) { ProfileScreen(viewModel) }
             composable(Screen.Settings.route) { SettingsScreen(viewModel) }
         }
     }

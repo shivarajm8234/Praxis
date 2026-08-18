@@ -1,25 +1,37 @@
 package ai.helply.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.domain.EmailCategory
 import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcademicsScreen(viewModel: HelplyViewModel) {
     var assignmentText by remember { mutableStateOf("") }
-    val resultText by viewModel.academicResult.collectAsState()
+    val isAgentRunning by viewModel.isAgentRunning.collectAsState()
+    val autonomousResult by viewModel.autonomousPipelineResult.collectAsState()
+
+    val emails by viewModel.emails.collectAsState()
+    val emailScanSummary by viewModel.emailScanSummary.collectAsState()
+    val examLockState by viewModel.examLockState.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -30,19 +42,20 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
         item {
             Column {
                 Text(
-                    text = "ACADEMIC CO-PILOT",
+                    text = "AUTONOMOUS ACADEMIC AGENT",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "AI Academic Autopilot",
+                    text = "AI Homework & Exam Autopilot",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
+        // Feature 1: Autonomous Academic Agent (PPT, PDF, Research, Notification)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -52,12 +65,12 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Camera / OCR / PDF Ingestion",
+                        text = "🤖 Fully Autonomous Homework Agent",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Extract requirements, deadlines, and multi-step research plans automatically.",
+                        text = "Enter assignment or topic. The AI agent automatically researches, generates Presentation PPT slides, PDF Research Report, notes, and notifies you when complete!",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -67,46 +80,42 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                     OutlinedTextField(
                         value = assignmentText,
                         onValueChange = { assignmentText = it },
-                        label = { Text("Paste assignment text or OCR prompt...") },
+                        label = { Text("Topic or assignment prompt...") },
+                        placeholder = { Text("e.g. ResNet-18 Image Classification Lab Report & Presentation") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp),
+                            .height(90.dp),
                         shape = RoundedCornerShape(12.dp)
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(
+                    Button(
+                        onClick = {
+                            val prompt = if (assignmentText.isNotBlank()) assignmentText else "Machine Learning ResNet-18 Transfer Learning Lab"
+                            viewModel.runAutonomousAcademicAgent(prompt)
+                        },
+                        enabled = !isAgentRunning,
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
                     ) {
-                        Button(
-                            onClick = {
-                                val input = if (assignmentText.isNotBlank()) assignmentText else "Machine Learning Lab Assignment: Train ResNet-18 model on CIFAR-10 dataset and submit notebook report by Oct 28."
-                                viewModel.extractRequirements(input)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Extract Requirements", fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                val input = if (assignmentText.isNotBlank()) assignmentText else "DBMS Project Report & Presentation Slides on Indexing Techniques"
-                                viewModel.generateReport(input)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Generate PPT & Report", fontSize = 12.sp)
+                        if (isAgentRunning) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Agent Researching & Generating...")
+                        } else {
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Let AI Do Everything (PPT + PDF + Notify)")
                         }
                     }
                 }
             }
         }
 
-        resultText?.let { text ->
+        // Autonomous Pipeline Output Result
+        autonomousResult?.let { result ->
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
@@ -118,24 +127,123 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF3B82F6)
-                            )
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF3B82F6))
                             Text(
-                                text = "Autonomous Analysis Complete",
-                                style = MaterialTheme.typography.titleSmall,
+                                text = "Autonomous Deliverables Generated!",
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E40AF)
                             )
                         }
+
                         Spacer(modifier = Modifier.height(8.dp))
+
                         Text(
-                            text = text,
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = result.researchSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
                             color = Color(0xFF1E3A8A)
                         )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(onClick = {}, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
+                                Text("Open PPT (${result.pptSlideCount} Slides)", fontSize = 11.sp)
+                            }
+                            OutlinedButton(onClick = {}, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) {
+                                Text("Open PDF Report", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Feature 2: College Email Scanner & 5-Day Social Media Lockdown
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (examLockState.isLockActive) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = if (examLockState.isLockActive) Color(0xFFEF4444) else MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "College Email & Exam Circular Scanner",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (examLockState.isLockActive) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color(0xFFFCA5A5)
+                            ) {
+                                Text(
+                                    text = "5-Day Lock Active 🔒",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7F1D1D),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Real-time AI analyzer scans incoming college circulars. If an exam is detected, social media apps are strictly locked 5 days before the exam until completion.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = { viewModel.scanCollegeEmails() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Scan College Circulars & Check Exam Lockdown")
+                    }
+
+                    emailScanSummary?.let { summary ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF0F172A),
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
                     }
                 }
             }
