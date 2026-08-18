@@ -7,32 +7,41 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryBlue,
+    primary = PrimaryIndigo,
     secondary = AccentTeal,
-    tertiary = PrimaryDarkBlue,
+    tertiary = PrimaryBlue,
     background = NeutralDark,
     surface = SurfaceDark,
-    onPrimary = TextPrimaryDark,
-    onSecondary = TextPrimaryDark,
+    surfaceVariant = CardDark,
+    onPrimary = Color.White,
+    onSecondary = Color.White,
     onBackground = TextPrimaryDark,
-    onSurface = TextPrimaryDark
+    onSurface = TextPrimaryDark,
+    onSurfaceVariant = TextSecondaryDark,
+    primaryContainer = NavActivePill,
+    onPrimaryContainer = NavActiveIcon
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = PrimaryBlue,
+    primary = PrimaryIndigo,
     secondary = AccentTeal,
-    tertiary = PrimaryDarkBlue,
+    tertiary = PrimaryBlue,
     background = NeutralLight,
     surface = SurfaceLight,
-    onPrimary = SurfaceLight,
-    onSecondary = SurfaceLight,
+    surfaceVariant = Color(0xFFF1F5F9),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
     onBackground = TextPrimaryLight,
-    onSurface = TextPrimaryLight
+    onSurface = TextPrimaryLight,
+    onSurfaceVariant = TextSecondaryLight,
+    primaryContainer = NavActivePill,
+    onPrimaryContainer = NavActiveIcon
 )
 
 @Composable

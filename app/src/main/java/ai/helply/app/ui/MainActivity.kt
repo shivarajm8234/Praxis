@@ -3,10 +3,20 @@ package ai.helply.app.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -27,14 +37,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-sealed class Screen(val route: String, val title: String) {
-    object Home : Screen("home", "HOME")
-    object Academics : Screen("academics", "ACADEMICS")
-    object Memory : Screen("memory", "MEMORY")
-    object Placements : Screen("placements", "PLACEMENTS")
-    object Portfolio : Screen("portfolio", "PORTFOLIO")
-    object Settings : Screen("settings", "SETTINGS")
-    object DemoMode : Screen("demo", "DEMO MODE")
+sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+    object Home : Screen("home", "Home", Icons.Default.Home)
+    object Academics : Screen("academics", "Academics", Icons.Default.Edit)
+    object NotepadMemory : Screen("memory", "Memory", Icons.Default.Star)
+    object Placements : Screen("placements", "Placements", Icons.Default.Person)
+    object Settings : Screen("settings", "AI Models", Icons.Default.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,19 +55,21 @@ fun HelplyAppNavigation() {
     val screens = listOf(
         Screen.Home,
         Screen.Academics,
-        Screen.Memory,
+        Screen.NotepadMemory,
         Screen.Placements,
-        Screen.Portfolio,
-        Screen.Settings,
-        Screen.DemoMode
+        Screen.Settings
     )
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
                 screens.forEach { screen ->
+                    val isSelected = currentRoute == screen.route
                     NavigationBarItem(
-                        selected = currentRoute == screen.route,
+                        selected = isSelected,
                         onClick = {
                             if (currentRoute != screen.route) {
                                 navController.navigate(screen.route) {
@@ -68,8 +78,25 @@ fun HelplyAppNavigation() {
                                 }
                             }
                         },
-                        label = { Text(screen.title) },
-                        icon = {}
+                        label = {
+                            Text(
+                                text = screen.title,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = screen.icon,
+                                contentDescription = screen.title
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
@@ -82,11 +109,9 @@ fun HelplyAppNavigation() {
         ) {
             composable(Screen.Home.route) { HomeScreen(navController) }
             composable(Screen.Academics.route) { AcademicsScreen() }
-            composable(Screen.Memory.route) { MemoryScreen() }
+            composable(Screen.NotepadMemory.route) { MemoryScreen() }
             composable(Screen.Placements.route) { PlacementScreen() }
-            composable(Screen.Portfolio.route) { PortfolioScreen() }
             composable(Screen.Settings.route) { SettingsScreen() }
-            composable(Screen.DemoMode.route) { DemoModeScreen() }
         }
     }
 }
