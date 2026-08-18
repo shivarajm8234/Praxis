@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.core.AppLockPermissionManager
 import ai.helply.app.domain.AIAppClassifierEngine
 import ai.helply.app.domain.ClassifiedApp
 import ai.helply.app.ui.HelplyViewModel
@@ -170,7 +171,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Feature 2: College Email Scanner & 5-Day Social Media Lockdown
+        // Feature 2: Real College Email Scanner & Live App Enforcement Toggle
         item {
             Card(
                 colors = CardDefaults.cardColors(
@@ -196,34 +197,33 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                                 tint = if (examLockState.isLockActive) Color(0xFFEF4444) else MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "College Email & Exam Circular Scanner",
+                                text = "College Email Scanner & Exam Lock",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                         }
 
-                        if (examLockState.isLockActive) {
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = Color(0xFFFCA5A5)
-                            ) {
-                                Text(
-                                    text = "5-Day Lock Active 🔒",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF7F1D1D),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                        Switch(
+                            checked = examLockState.isLockActive,
+                            onCheckedChange = { active ->
+                                if (active && !AppLockPermissionManager.hasUsageStatsPermission(context)) {
+                                    AppLockPermissionManager.openUsageStatsSettings(context)
+                                }
+                                viewModel.toggleExamLockdown(active)
                             }
-                        }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Real-time AI analyzer scans incoming college circulars. If an exam is detected, social media apps are strictly locked 5 days before the exam until completion.",
+                        text = if (examLockState.isLockActive)
+                            "🔒 EXAM LOCK ACTIVE: Real-time background service will kick you to Home screen if you attempt to open Instagram, YouTube, Snapchat, or X!"
+                        else
+                            "Scan incoming college circulars or toggle Lock switch above to enable real 5-day app enforcement.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (examLockState.isLockActive) Color(0xFF991B1B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (examLockState.isLockActive) FontWeight.SemiBold else FontWeight.Normal
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -233,7 +233,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Scan College Circulars & Check Exam Lockdown")
+                        Text("Scan College Circulars & Trigger Lockdown")
                     }
 
                     emailScanSummary?.let { summary ->
@@ -256,7 +256,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Feature 3: AI App List Classification & Lock Decisions Table
+        // Feature 3: Real Device Installed Apps Classification Table
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -265,20 +265,33 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📱 Real Scanned Device Apps (${classifiedApps.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        TextButton(onClick = {
+                            classifiedApps = AIAppClassifierEngine.scanInstalledApps(context)
+                        }) {
+                            Text("Rescan Device", fontSize = 11.sp)
+                        }
+                    }
+
                     Text(
-                        text = "🧠 AI App List Classifier & Exam Lock Rules",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "AI automatically scans installed apps: Locks Social Media & YouTube. EXEMPTS Payment apps (GPay, PhonePe, Paytm) and AI tools (ChatGPT, Gemini, Helply OS).",
+                        text = "Scanned live from PackageManager. Locks Social Media & YouTube while preserving Payment apps (GPay, PhonePe, Paytm) and AI tools.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    classifiedApps.forEach { app ->
+                    classifiedApps.take(15).forEach { app ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -294,7 +307,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                                 Text(app.iconEmoji, fontSize = 18.sp)
                                 Column {
                                     Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    Text(app.reasoning, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                    Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                                 }
                             }
 

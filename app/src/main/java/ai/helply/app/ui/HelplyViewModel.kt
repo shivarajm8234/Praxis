@@ -1,16 +1,13 @@
 package ai.helply.app.ui
 
 import android.content.Context
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ai.helply.app.ai.GemmaEngineManager
+import ai.helply.app.core.AppLockEnforcer
 import ai.helply.app.core.NotificationHelper
-import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.AcademicDao
+import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.PlacementDao
 import ai.helply.app.data.entities.*
 import ai.helply.app.domain.*
@@ -23,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -99,13 +97,20 @@ class HelplyViewModel @Inject constructor(
                 _memories.value = list
             }
         }
-        // Seed default memories & emails
-        viewModelScope.launch {
-            delay(300)
-            if (_memories.value.isEmpty()) {
-                seedDefaultMemories()
+        _emails.value = EmailScannerEngine.sampleCollegeEmails()
+
+        // Continuous App Lock Monitor Loop
+        startAppLockEnforcementLoop()
+    }
+
+    private fun startAppLockEnforcementLoop() {
+        viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                if (_examLockState.value.isLockActive) {
+                    AppLockEnforcer.enforceLockIfBlocked(context, true)
+                }
+                delay(800)
             }
-            _emails.value = EmailScannerEngine.sampleCollegeEmails()
         }
     }
 
@@ -228,6 +233,10 @@ class HelplyViewModel @Inject constructor(
         }
     }
 
+    fun toggleExamLockdown(active: Boolean) {
+        _examLockState.value = _examLockState.value.copy(isLockActive = active)
+    }
+
     // ─── Feature 3: Company 360° & Resume Shortlist Engine ───
     fun analyzeCompanyShortlist(companyName: String, candidateResume: String) {
         viewModelScope.launch {
@@ -316,14 +325,5 @@ class HelplyViewModel @Inject constructor(
                 } else null
             }
             .toMap()
-    }
-
-    private suspend fun seedDefaultMemories() {
-        val defaults = listOf(
-            AcademicMemoryEntity(type = "Project", title = "Helply AI Student OS", description = "On-device AI OS for students using Gemma 4 E4B & LiteRT.", source = "GitHub Ingestion", confidenceScore = 0.98f),
-            AcademicMemoryEntity(type = "Certificate", title = "Android Development with Kotlin", description = "Certified by Google Developers.", source = "User Upload", confidenceScore = 0.99f),
-            AcademicMemoryEntity(type = "Exam", title = "DBMS End Sem Exam", description = "Scheduled Oct 28, 2024", source = "College Email Circular", confidenceScore = 1.0f)
-        )
-        defaults.forEach { memoryDao.insertMemory(it) }
     }
 }

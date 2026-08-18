@@ -24,11 +24,10 @@ enum class AppCategory {
 
 object AIAppClassifierEngine {
 
-    // Package keywords & exact packages
     private val paymentKeywords = listOf("pay", "upi", "wallet", "phonepe", "paytm", "gpay", "bhim", "bank", "hdfc", "sbi", "icici", "axis")
     private val aiKeywords = listOf("chatgpt", "openai", "claude", "gemini", "perplexity", "copilot", "helply", "anthropic")
-    private val socialKeywords = listOf("instagram", "snapchat", "twitter", "facebook", "tiktok", "reddit", "pinterest", "threads", "tumblr")
-    private val entertainmentKeywords = listOf("youtube", "netflix", "primevideo", "hotstar", "twitch", "pubg", "bgmi", "candycrush", "roblox")
+    private val socialKeywords = listOf("instagram", "snapchat", "twitter", "facebook", "tiktok", "reddit", "pinterest", "threads", "tumblr", "whatsapp")
+    private val entertainmentKeywords = listOf("youtube", "netflix", "primevideo", "hotstar", "twitch", "pubg", "bgmi", "candycrush", "roblox", "vlc")
 
     fun classifyApp(packageName: String, appName: String): ClassifiedApp {
         val pName = packageName.lowercase()
@@ -93,30 +92,35 @@ object AIAppClassifierEngine {
         )
     }
 
+    /**
+     * Scans REAL installed applications live from the device package manager.
+     */
     fun scanInstalledApps(context: Context): List<ClassifiedApp> {
         val list = mutableListOf<ClassifiedApp>()
         val pm = context.packageManager
 
-        // Standard sample set if PM query returns basic packages
-        val samplePackages = listOf(
-            "com.instagram.android" to "Instagram",
-            "com.google.android.youtube" to "YouTube",
-            "com.snapchat.android" to "Snapchat",
-            "com.twitter.android" to "X (Twitter)",
-            "com.reddit.frontpage" to "Reddit",
-            "com.phonepe.app" to "PhonePe",
-            "net.one97.paytm" to "Paytm",
-            "com.google.android.apps.nfc.payment" to "Google Pay (GPay)",
-            "com.openai.chatgpt" to "ChatGPT",
-            "ai.helply.app" to "Helply OS",
-            "com.google.android.apps.docs" to "Google Drive",
-            "com.netflix.mediaclient" to "Netflix"
-        )
+        try {
+            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            for (appInfo in installedApps) {
+                // Skip internal system core services unless launchable
+                val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
 
-        samplePackages.forEach { (pkg, name) ->
-            list.add(classifyApp(pkg, name))
+                if (!isSystemApp || launchIntent != null) {
+                    val appName = pm.getApplicationLabel(appInfo).toString()
+                    val packageName = appInfo.packageName
+
+                    // Avoid duplicate OS core apps that aren't relevant
+                    if (packageName != "android" && !packageName.startsWith("com.android.internal")) {
+                        list.add(classifyApp(packageName, appName))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
 
-        return list
+        // Sort: Blocked apps first, then Allowed apps
+        return list.sortedByDescending { it.isBlockedDuringExams }
     }
 }
