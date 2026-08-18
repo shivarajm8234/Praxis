@@ -17,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,18 +30,31 @@ import ai.helply.app.ui.HelplyViewModel
 @Composable
 fun ProfileScreen(viewModel: HelplyViewModel) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var studentName by remember { mutableStateOf("Satoru Gojo") }
-    var usnNumber by remember { mutableStateOf("1VA21CS088") }
-    var degreeBranch by remember { mutableStateOf("B.Tech - Computer Science & Engg") }
-    var currentCgpa by remember { mutableStateOf("9.42 / 10.0") }
-    var masterResumeName by remember { mutableStateOf("Satoru_Gojo_Master_Resume_2024.pdf") }
-    var portfolioUrl by remember { mutableStateOf("https://satoru.github.io/portfolio") }
+    var studentName by remember { mutableStateOf("Student Profile") }
+    var usnNumber by remember { mutableStateOf("Not set") }
+    var degreeBranch by remember { mutableStateOf("Not set") }
+    var currentCgpa by remember { mutableStateOf("Not set") }
+    var masterResumeName by remember { mutableStateOf("No resume attached") }
+    var portfolioUrl by remember { mutableStateOf("Not published") }
 
     var hasUsagePermission by remember { mutableStateOf(AppLockPermissionManager.hasUsageStatsPermission(context)) }
     var hasOverlayPermission by remember { mutableStateOf(AppLockPermissionManager.hasOverlayPermission(context)) }
 
-    val examLockState by viewModel.examLockState.collectAsState()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasUsagePermission = AppLockPermissionManager.hasUsageStatsPermission(context)
+                hasOverlayPermission = AppLockPermissionManager.hasOverlayPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val memories by viewModel.memories.collectAsState()
 
     var showEditProfileDialog by remember { mutableStateOf(false) }

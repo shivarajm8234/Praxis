@@ -14,7 +14,8 @@
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
-    <!-- App Lock & Foreground Usage Permissions -->
+    <!-- App Lock, Package Query & Foreground Usage Permissions -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -45,6 +46,11 @@
                 <data android:scheme="ai.helply.oauth" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.AppLockOverlayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Helply" />
     </application>
 
 </manifest>

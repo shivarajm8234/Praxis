@@ -73,6 +73,9 @@ class HelplyViewModel @Inject constructor(
     private val _examLockState = MutableStateFlow(ExamLockState())
     val examLockState: StateFlow<ExamLockState> = _examLockState.asStateFlow()
 
+    private val _manuallyLockedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val manuallyLockedPackages: StateFlow<Set<String>> = _manuallyLockedPackages.asStateFlow()
+
     private val _emailScanSummary = MutableStateFlow<String?>(null)
     val emailScanSummary: StateFlow<String?> = _emailScanSummary.asStateFlow()
 
@@ -97,17 +100,38 @@ class HelplyViewModel @Inject constructor(
                 _memories.value = list
             }
         }
-        _emails.value = EmailScannerEngine.sampleCollegeEmails()
+        _emails.value = emptyList()
 
         // Continuous App Lock Monitor Loop
         startAppLockEnforcementLoop()
     }
 
+    fun addCollegeEmail(sender: String, subject: String, body: String, isExamCircular: Boolean = false) {
+        val category = if (isExamCircular) EmailCategory.EXAM_CIRCULAR else EmailCategory.GENERAL_ANNOUNCEMENT
+        val priority = if (isExamCircular) PriorityLevel.CRITICAL_RED else PriorityLevel.LOW_GREEN
+        val newEmail = CollegeEmail(
+            id = "em_${System.currentTimeMillis()}",
+            sender = sender,
+            subject = subject,
+            snippet = if (body.length > 80) body.take(80) + "..." else body,
+            fullBody = body,
+            timestamp = "Just Now",
+            category = category,
+            priority = priority,
+            detectedExamDate = if (isExamCircular) "Upcoming Exam" else null,
+            examDateMillis = if (isExamCircular) System.currentTimeMillis() + (5 * 86400000L) else null
+        )
+        _emails.value = _emails.value + newEmail
+    }
+
     private fun startAppLockEnforcementLoop() {
         viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
-                if (_examLockState.value.isLockActive) {
-                    AppLockEnforcer.enforceLockIfBlocked(context, true)
+                val isLockActive = _examLockState.value.isLockActive
+                val manualSet = _manuallyLockedPackages.value
+
+                if (isLockActive || manualSet.isNotEmpty()) {
+                    AppLockEnforcer.enforceLockIfBlocked(context, isLockActive, manualSet)
                 }
                 delay(800)
             }
@@ -237,6 +261,25 @@ class HelplyViewModel @Inject constructor(
         _examLockState.value = _examLockState.value.copy(isLockActive = active)
     }
 
+    // ─── Manual Lock Controls ─────────────────────────────
+    fun toggleManualAppLock(packageName: String) {
+        val current = _manuallyLockedPackages.value.toMutableSet()
+        if (current.contains(packageName)) {
+            current.remove(packageName)
+        } else {
+            current.add(packageName)
+        }
+        _manuallyLockedPackages.value = current
+    }
+
+    fun lockAllBlockedAppsManually(blockedPackages: List<String>) {
+        _manuallyLockedPackages.value = blockedPackages.toSet()
+    }
+
+    fun unlockAllManualApps() {
+        _manuallyLockedPackages.value = emptySet()
+    }
+
     // ─── Feature 3: Company 360° & Resume Shortlist Engine ───
     fun analyzeCompanyShortlist(companyName: String, candidateResume: String) {
         viewModelScope.launch {
@@ -270,14 +313,20 @@ class HelplyViewModel @Inject constructor(
     }
 
     // ─── Portfolio Operations ────────────────────────────
-    fun deployPortfolio(themeName: String) {
+    fun deployPortfolio(
+        themeName: String,
+        studentName: String = "Student",
+        degree: String = "Computer Science",
+        college: String = "University",
+        bio: String = "Student building intelligent software solutions."
+    ) {
         viewModelScope.launch {
             _deployStatus.value = emptyList()
 
             addDeployLog("🔄 Initializing Portfolio Deployment Pipeline...")
             delay(400)
 
-            val theme = PortfolioTheme.values().find { it.themeName == themeName }
+            val theme = PortfolioTheme.entries.find { it.themeName == themeName }
                 ?: PortfolioTheme.MODERN_DEVELOPER
 
             addDeployLog("🎨 Applying theme: ${theme.themeName}")
@@ -285,23 +334,24 @@ class HelplyViewModel @Inject constructor(
 
             val html = withContext(Dispatchers.Default) {
                 PortfolioBuilder.buildHtmlPortfolio(
-                    studentName = "Satoru Gojo",
-                    degree = "B.Tech Computer Science",
-                    college = "Engineering College",
-                    bio = "AI/ML enthusiast building on-device intelligent systems.",
+                    studentName = studentName,
+                    degree = degree,
+                    college = college,
+                    bio = bio,
                     theme = theme,
                     memories = _memories.value
                 )
             }
             _portfolioHtml.value = html
 
+            val slug = studentName.trim().lowercase().replace("\\s+".toRegex(), "-")
             addDeployLog("✅ HTML bundle generated (${html.length} characters)")
             delay(300)
 
             addDeployLog("🚀 Deploying to GitHub Pages...")
             delay(500)
 
-            addDeployLog("🌐 Live URL: https://satoru.github.io/portfolio/")
+            addDeployLog("🌐 Live URL: https://$slug.github.io/portfolio/")
             addDeployLog("✅ Portfolio deployment completed successfully!")
         }
     }

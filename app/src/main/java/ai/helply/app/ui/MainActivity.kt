@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,6 +51,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Placements : Screen("placements", "Placements", Icons.Default.Person)
     object Settings : Screen("settings", "AI Models", Icons.Default.Settings)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
+    object Portfolio : Screen("portfolio", "Portfolio", Icons.Default.Share)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,25 +94,44 @@ fun HelplyAppNavigation() {
                         color = Color(0xFF4F46E5)
                     )
 
-                    // Profile Icon Button on Top Header
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF4F46E5),
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clickable {
-                                if (currentRoute != Screen.Profile.route) {
-                                    navController.navigate(Screen.Profile.route)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (currentRoute != Screen.Portfolio.route) {
+                                    navController.navigate(Screen.Portfolio.route)
                                 }
                             }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "SG",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Portfolio Publisher",
+                                tint = Color(0xFF4F46E5)
                             )
+                        }
+
+                        // Profile Icon Button on Top Header
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF4F46E5),
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clickable {
+                                    if (currentRoute != Screen.Profile.route) {
+                                        navController.navigate(Screen.Profile.route)
+                                    }
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "SG",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -168,6 +189,7 @@ fun HelplyAppNavigation() {
             composable(Screen.Placements.route) { PlacementScreen(viewModel) }
             composable(Screen.Settings.route) { SettingsScreen(viewModel) }
             composable(Screen.Profile.route) { ProfileScreen(viewModel) }
+            composable(Screen.Portfolio.route) { PortfolioScreen(viewModel) }
         }
     }
 }

@@ -33,6 +33,19 @@ object AIAppClassifierEngine {
     private val socialKeywords = listOf("instagram", "snapchat", "twitter", "facebook", "tiktok", "reddit", "pinterest", "threads", "tumblr", "whatsapp")
     private val entertainmentKeywords = listOf("youtube", "netflix", "primevideo", "hotstar", "twitch", "pubg", "bgmi", "candycrush", "roblox", "vlc")
 
+    // Standard high-distraction target app catalog
+    private val standardRestrictedApps = listOf(
+        "com.google.android.youtube" to "YouTube",
+        "com.instagram.android" to "Instagram",
+        "com.snapchat.android" to "Snapchat",
+        "com.twitter.android" to "X (Twitter)",
+        "com.reddit.frontpage" to "Reddit",
+        "com.zhiliaoapp.musically" to "TikTok",
+        "com.facebook.katana" to "Facebook",
+        "com.netflix.mediaclient" to "Netflix",
+        "com.amazon.avod.thirdpartyclient" to "Prime Video"
+    )
+
     fun classifyApp(packageName: String, appName: String, usageMs: Long = 0L): ClassifiedApp {
         val pName = packageName.lowercase()
         val aName = appName.lowercase()
@@ -108,7 +121,7 @@ object AIAppClassifierEngine {
     }
 
     private fun formatUsageTime(usageMs: Long): String {
-        if (usageMs <= 0) return "15m today"
+        if (usageMs <= 0) return "0m today"
         val totalMinutes = usageMs / (1000 * 60)
         val hours = totalMinutes / 60
         val mins = totalMinutes % 60
@@ -124,7 +137,7 @@ object AIAppClassifierEngine {
      * Scans ONLY BLOCKED installed applications along with their screen usage time today.
      */
     fun scanOnlyBlockedApps(context: Context): List<ClassifiedApp> {
-        val list = mutableListOf<ClassifiedApp>()
+        val listMap = mutableMapOf<String, ClassifiedApp>()
         val pm = context.packageManager
 
         // Query today's UsageStats
@@ -150,6 +163,7 @@ object AIAppClassifierEngine {
             e.printStackTrace()
         }
 
+        // 1. Scan live installed apps via PackageManager
         try {
             val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             for (appInfo in installedApps) {
@@ -164,9 +178,8 @@ object AIAppClassifierEngine {
                         val usageMs = usageMap[packageName] ?: 0L
                         val classified = classifyApp(packageName, appName, usageMs)
 
-                        // ONLY INCLUDE BLOCKED APPS!
                         if (classified.isBlockedDuringExams) {
-                            list.add(classified)
+                            listMap[packageName] = classified
                         }
                     }
                 }
@@ -175,7 +188,50 @@ object AIAppClassifierEngine {
             e.printStackTrace()
         }
 
-        // Sort by usage time (highest usage first)
-        return list.sortedByDescending { it.usageTimeMs }
+        // 2. Ensure standard high-distraction apps are included if not already found
+        standardRestrictedApps.forEach { (pkg, name) ->
+            if (!listMap.containsKey(pkg)) {
+                val usageMs = usageMap[pkg] ?: 0L
+                val classified = classifyApp(pkg, name, usageMs)
+                listMap[pkg] = classified
+            }
+        }
+
+        return listMap.values.sortedByDescending { it.usageTimeMs }
+    }
+
+    /**
+     * Scans ALL installed applications for manual selection dialog.
+     */
+    fun scanInstalledApps(context: Context): List<ClassifiedApp> {
+        val listMap = mutableMapOf<String, ClassifiedApp>()
+        val pm = context.packageManager
+
+        try {
+            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            for (appInfo in installedApps) {
+                val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
+
+                if (!isSystemApp || launchIntent != null) {
+                    val appName = pm.getApplicationLabel(appInfo).toString()
+                    val packageName = appInfo.packageName
+
+                    if (packageName != "android" && !packageName.startsWith("com.android.internal")) {
+                        listMap[packageName] = classifyApp(packageName, appName)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        standardRestrictedApps.forEach { (pkg, name) ->
+            if (!listMap.containsKey(pkg)) {
+                listMap[pkg] = classifyApp(pkg, name)
+            }
+        }
+
+        return listMap.values.sortedByDescending { it.isBlockedDuringExams }
     }
 }

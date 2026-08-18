@@ -24,10 +24,9 @@ object PortfolioBuilder {
     ): String {
         val projects = memories.filter { it.type.lowercase().contains("project") }
         val skills = memories.filter { it.type.lowercase().contains("skill") }
-        val certs = memories.filter { it.type.lowercase().contains("certif") }
 
         val projectCardsHtml = if (projects.isEmpty()) {
-            """<div class="card"><p>Helply OS Android App — Private local-first AI system.</p></div>"""
+            """<div class="card"><p>No projects recorded in Helply Memory yet.</p></div>"""
         } else {
             projects.joinToString("\n") { p ->
                 """
@@ -41,7 +40,7 @@ object PortfolioBuilder {
         }
 
         val skillsHtml = if (skills.isEmpty()) {
-            """<span class="skill-tag">Kotlin</span><span class="skill-tag">Android</span><span class="skill-tag">LiteRT AI</span>"""
+            """<p style="opacity: 0.7;">No technical skills recorded in Helply Memory yet.</p>"""
         } else {
             skills.joinToString(" ") { s ->
                 """<span class="skill-tag">${s.title}</span>"""

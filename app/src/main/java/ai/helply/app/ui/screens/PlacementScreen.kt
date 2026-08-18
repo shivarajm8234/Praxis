@@ -22,11 +22,10 @@ import ai.helply.app.ui.HelplyViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacementScreen(viewModel: HelplyViewModel) {
-    var companyName by remember { mutableStateOf("TechCorp") }
-    var candidateResumeText by remember { mutableStateOf("Android Developer skilled in Kotlin, Jetpack Compose, Room DB, Clean Architecture, and REST APIs.") }
+    var companyName by remember { mutableStateOf("") }
+    var candidateResumeText by remember { mutableStateOf("") }
 
     val companyAnalysis by viewModel.companyAnalysis.collectAsState()
-    val atsResult by viewModel.atsResult.collectAsState()
 
     val quickCompanies = listOf("TechCorp", "Google", "Amazon", "Goldman Sachs")
 

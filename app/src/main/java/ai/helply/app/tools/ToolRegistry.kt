@@ -50,17 +50,16 @@ class ToolRegistry @Inject constructor(
                 }
 
                 "calculateATS" -> {
-                    val resumeId = params["resumeId"] ?: "default"
-                    val jobId = params["jobId"] ?: "default"
-                    // Simulated transparent formula calculation
-                    val score = 84
+                    val resumeText = params["resumeText"] ?: params["resumeId"] ?: ""
+                    val jobDesc = params["jobDesc"] ?: params["jobId"] ?: ""
+                    val atsResult = ai.helply.app.domain.ATSEngine.evaluateResume(resumeText, jobDesc)
                     ToolResult.Success(
-                        "Estimated ATS Score calculated: $score%",
+                        "ATS Score calculated dynamically: ${atsResult.estimatedScore}%",
                         mapOf(
-                            "score" to score,
-                            "keywordMatch" to 88,
-                            "semanticSimilarity" to 82,
-                            "missingKeywords" to listOf("Docker", "Kubernetes", "GraphQL")
+                            "score" to atsResult.estimatedScore,
+                            "keywordMatch" to atsResult.keywordMatchPercentage,
+                            "semanticSimilarity" to atsResult.semanticSimilarityPercentage,
+                            "missingKeywords" to atsResult.missingKeywords
                         )
                     )
                 }

@@ -60,70 +60,7 @@ fun HomeScreen(navController: NavController, viewModel: HelplyViewModel) {
     var newNoteContent by remember { mutableStateOf("") }
 
     var notesList by remember {
-        mutableStateOf(
-            listOf(
-                NotepadNote(
-                    id = "1",
-                    title = "DBMS Exam Focus Plan",
-                    contentSnippet = "Topics to cover: SQL, Normalization, Transactions...",
-                    fullContent = "Topics to cover:\n1. SQL Queries & Joins\n2. B+ Tree Indexing & Hashing\n3. ACID Properties & Concurrency Control\n4. Normalization (1NF to BCNF)\n\n[Agent Directive: Schedule 3-hour Focus Mode before Oct 28 exam]",
-                    timestamp = "10:22 AM",
-                    isPinned = true,
-                    tileBgColor = Color(0xFFEFF6FF),
-                    iconColor = Color(0xFF3B82F6),
-                    assignedAgent = "CollegeIntelligenceAgent",
-                    defaultToolCall = "enableFocusMode(subject='DBMS', durationDays=3)"
-                ),
-                NotepadNote(
-                    id = "2",
-                    title = "ML Lab Report - ResNet",
-                    contentSnippet = "Dataset: CIFAR-10\nModel: ResNet-18...",
-                    fullContent = "Dataset: CIFAR-10\nModel Architecture: ResNet-18 Transfer Learning\nHyperparameters: LR=0.001, Epochs=25, Batch=64\nValidation Accuracy: 92.4%\n\n[Agent Directive: Generate LaTeX report template & submit before tomorrow 11:59 PM]",
-                    timestamp = "9:48 AM",
-                    isPinned = true,
-                    tileBgColor = Color(0xFFF0FDF4),
-                    iconColor = Color(0xFF22C55E),
-                    assignedAgent = "AcademicAgent",
-                    defaultToolCall = "createTask(title='ML Lab Report', subject='Machine Learning', deadlineDays=2)"
-                ),
-                NotepadNote(
-                    id = "3",
-                    title = "TechCorp Interview Preparation",
-                    contentSnippet = "Round 1: Coding\nRound 2: System Design...",
-                    fullContent = "Target Role: Android Software Engineer\nRequirements:\n- Kotlin & Jetpack Compose\n- Dependency Injection (Hilt)\n- Multi-threading & Coroutines\n\n[Agent Directive: Calculate ATS score for candidate resume vs TechCorp job description]",
-                    timestamp = "Yesterday",
-                    isPinned = false,
-                    tileBgColor = Color(0xFFFEFCE8),
-                    iconColor = Color(0xFFEAB308),
-                    assignedAgent = "PlacementAgent",
-                    defaultToolCall = "calculateATS(resumeId='res_1', jobId='TechCorp')"
-                ),
-                NotepadNote(
-                    id = "4",
-                    title = "Hackathon Ideas",
-                    contentSnippet = "1. AI Attendance System\n2. Smart Portfolio Builder...",
-                    fullContent = "Idea 1: Automated AI Classroom Attendance System via Facial Embedding\nIdea 2: Smart Student AI Operating System (Helply OS)\nIdea 3: Automated Resume & GitHub Portfolio Synthesizer\n\n[Agent Directive: Synthesize winning project showcase into HTML Web Portfolio]",
-                    timestamp = "Yesterday",
-                    isPinned = false,
-                    tileBgColor = Color(0xFFEFF6FF),
-                    iconColor = Color(0xFF3B82F6),
-                    assignedAgent = "PortfolioAgent",
-                    defaultToolCall = "deployPortfolio(repoName='student-portfolio')"
-                ),
-                NotepadNote(
-                    id = "5",
-                    title = "Seminar - Edge AI",
-                    contentSnippet = "Speaker: Dr. Ananya Sharma\nDate: Oct 30, 2024...",
-                    fullContent = "Speaker: Dr. Ananya Sharma\nDate: Oct 30, 2024\nTopic: On-Device LLM Inference & NPU Acceleration using LiteRT & Gemma 4 E4B\nLocation: Auditorium B",
-                    timestamp = "Oct 25",
-                    isPinned = false,
-                    tileBgColor = Color(0xFFFEF2F2),
-                    iconColor = Color(0xFFEF4444),
-                    assignedAgent = "CollegeIntelligenceAgent",
-                    defaultToolCall = "updateMemory(title='Edge AI Seminar', type='Workshop', description='On-Device LLM Inference')"
-                )
-            )
-        )
+        mutableStateOf(emptyList<NotepadNote>())
     }
 
     val filteredNotes = notesList.filter {
@@ -247,14 +184,43 @@ fun HomeScreen(navController: NavController, viewModel: HelplyViewModel) {
                     }
                 }
 
-                items(filteredNotes) { note ->
-                    NoteCardResponsive(
-                        note = note,
-                        onClick = {
-                            viewModel.clearTrace()
-                            selectedNoteForDialog = note
+                if (filteredNotes.isEmpty()) {
+                    item {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "📝 No Academic Notes Yet",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Tap the + button to add real study notes or project tasks.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    )
+                    }
+                } else {
+                    items(filteredNotes) { note ->
+                        NoteCardResponsive(
+                            note = note,
+                            onClick = {
+                                viewModel.clearTrace()
+                                selectedNoteForDialog = note
+                            }
+                        )
+                    }
                 }
 
                 item {
