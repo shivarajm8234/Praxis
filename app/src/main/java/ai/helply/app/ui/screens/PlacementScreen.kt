@@ -9,13 +9,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlacementScreen() {
+fun PlacementScreen(viewModel: HelplyViewModel) {
     var companyName by remember { mutableStateOf("TechCorp") }
-    var jobDescription by remember { mutableStateOf("Looking for Android Engineer with Kotlin, Jetpack Compose, Room, and AI Edge experience.") }
-    var atsScore by remember { mutableStateOf<Int?>(84) }
+    var jobDescription by remember { mutableStateOf("Looking for Android Engineer with Kotlin, Jetpack Compose, Room, Coroutines, Git, and Docker experience.") }
+    var userResumeText by remember { mutableStateOf("Android Developer skilled in Kotlin, Jetpack Compose, Room DB, Clean Architecture, and REST APIs.") }
+
+    val atsResult by viewModel.atsResult.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -56,17 +59,29 @@ fun PlacementScreen() {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
-                        value = jobDescription,
-                        onValueChange = { jobDescription = it },
-                        label = { Text("Paste Job Description") },
+                        value = userResumeText,
+                        onValueChange = { userResumeText = it },
+                        label = { Text("Your Resume Summary / Text") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp),
+                            .height(80.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = jobDescription,
+                        onValueChange = { jobDescription = it },
+                        label = { Text("Paste Target Job Description") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(90.dp),
                         shape = RoundedCornerShape(12.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
-                        onClick = { atsScore = 88 },
+                        onClick = {
+                            viewModel.calculateATS(userResumeText, jobDescription)
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -76,7 +91,7 @@ fun PlacementScreen() {
             }
         }
 
-        atsScore?.let { score ->
+        atsResult?.let { result ->
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -85,23 +100,63 @@ fun PlacementScreen() {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Estimated ATS Compatibility Score: $score%",
+                            text = "Estimated ATS Compatibility Score: ${result.estimatedScore}%",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(6.dp))
+
                         Text(
-                            text = "• Matched Skills: Kotlin, Jetpack Compose, Room DB, Git\n• Missing Keywords: Docker, CI/CD Actions",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            text = "• Keyword Match: ${result.keywordMatchPercentage}% | Semantic Score: ${result.semanticSimilarityPercentage}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        if (result.matchedSkills.isNotEmpty()) {
+                            Text(
+                                text = "✔ Matched Skills: ${result.matchedSkills.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+                            )
+                        }
+
+                        if (result.missingKeywords.isNotEmpty()) {
+                            Text(
+                                text = "✖ Missing Keywords: ${result.missingKeywords.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Recommendations:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        result.recommendations.forEach { rec ->
+                            Text(
+                                text = " → $rec",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
-                            onClick = {},
+                            onClick = {
+                                // Generate updated resume by adding missing keywords
+                                userResumeText = "$userResumeText Skills added: ${result.missingKeywords.joinToString(", ")}."
+                                viewModel.calculateATS(userResumeText, jobDescription)
+                            },
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Generate Customized Resume V2", fontSize = 12.sp)
+                            Text("Auto-Inject Missing Keywords into Resume", fontSize = 12.sp)
                         }
                     }
                 }

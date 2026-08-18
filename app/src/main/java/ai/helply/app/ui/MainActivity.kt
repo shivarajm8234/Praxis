@@ -3,9 +3,7 @@ package ai.helply.app.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
@@ -17,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -51,6 +50,9 @@ fun HelplyAppNavigation() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Home.route
+
+    // Single shared ViewModel across all screens
+    val viewModel: HelplyViewModel = hiltViewModel()
 
     val screens = listOf(
         Screen.Home,
@@ -107,11 +109,11 @@ fun HelplyAppNavigation() {
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Home.route) { HomeScreen(navController) }
-            composable(Screen.Academics.route) { AcademicsScreen() }
-            composable(Screen.NotepadMemory.route) { MemoryScreen() }
-            composable(Screen.Placements.route) { PlacementScreen() }
-            composable(Screen.Settings.route) { SettingsScreen() }
+            composable(Screen.Home.route) { HomeScreen(navController, viewModel) }
+            composable(Screen.Academics.route) { AcademicsScreen(viewModel) }
+            composable(Screen.NotepadMemory.route) { MemoryScreen(viewModel) }
+            composable(Screen.Placements.route) { PlacementScreen(viewModel) }
+            composable(Screen.Settings.route) { SettingsScreen(viewModel) }
         }
     }
 }

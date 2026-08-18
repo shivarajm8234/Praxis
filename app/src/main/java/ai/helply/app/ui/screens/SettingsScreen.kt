@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.ui.HelplyViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -32,18 +33,20 @@ data class AIModelInfo(
     val architecture: String,
     val size: String,
     val description: String,
-    val isInstalled: Boolean,
-    val isLoadedInRAM: Boolean
+    val isInstalled: Boolean
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(viewModel: HelplyViewModel) {
     val coroutineScope = rememberCoroutineScope()
     var npuEnabled by remember { mutableStateOf(true) }
     var gpuDelegateEnabled by remember { mutableStateOf(true) }
     var gmailConnected by remember { mutableStateOf(true) }
     var githubConnected by remember { mutableStateOf(true) }
+
+    val isGemmaLoaded by viewModel.isModelLoaded.collectAsState()
+    val modelLoadProgress by viewModel.modelLoadProgress.collectAsState()
 
     var modelsList by remember {
         mutableStateOf(
@@ -54,8 +57,7 @@ fun SettingsScreen() {
                     architecture = "Quantized INT4 (NPU Optimized)",
                     size = "2.4 GB",
                     description = "Primary autonomous agentic router for tool calls & OCR synthesis.",
-                    isInstalled = true,
-                    isLoadedInRAM = true
+                    isInstalled = true
                 ),
                 AIModelInfo(
                     id = "2",
@@ -63,8 +65,7 @@ fun SettingsScreen() {
                     architecture = "Instruction-Tuned FP16",
                     size = "1.3 GB",
                     description = "Lightweight offline conversational LLM for quick note summaries.",
-                    isInstalled = false,
-                    isLoadedInRAM = false
+                    isInstalled = false
                 ),
                 AIModelInfo(
                     id = "3",
@@ -72,8 +73,7 @@ fun SettingsScreen() {
                     architecture = "Speech-to-Text Encoder",
                     size = "75 MB",
                     description = "On-device voice command recognition and lecture note audio parsing.",
-                    isInstalled = true,
-                    isLoadedInRAM = false
+                    isInstalled = true
                 )
             )
         )
@@ -135,6 +135,8 @@ fun SettingsScreen() {
         }
 
         items(modelsList) { model ->
+            val isThisModelLoaded = (model.id == "1" && isGemmaLoaded)
+
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -183,12 +185,12 @@ fun SettingsScreen() {
                         if (model.isInstalled) {
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
-                                color = if (model.isLoadedInRAM) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
+                                color = if (isThisModelLoaded) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
                             ) {
                                 Text(
-                                    text = if (model.isLoadedInRAM) "Active in RAM" else "Installed",
+                                    text = if (isThisModelLoaded) "Active in RAM" else "Installed",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (model.isLoadedInRAM) Color(0xFF15803D) else Color(0xFF475569),
+                                    color = if (isThisModelLoaded) Color(0xFF15803D) else Color(0xFF475569),
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
@@ -206,7 +208,34 @@ fun SettingsScreen() {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (downloadingModelId == model.id) {
+                    if (model.id == "1" && modelLoadProgress > 0f && modelLoadProgress < 1f) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Initializing LiteRT Engine & Warm-up...",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "${(modelLoadProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LinearProgressIndicator(
+                                progress = { modelLoadProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        }
+                    } else if (downloadingModelId == model.id) {
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -250,16 +279,17 @@ fun SettingsScreen() {
                     } else {
                         OutlinedButton(
                             onClick = {
-                                modelsList = modelsList.map { m ->
-                                    if (m.id == model.id) m.copy(isLoadedInRAM = !m.isLoadedInRAM)
-                                    else m
+                                if (isThisModelLoaded) {
+                                    viewModel.unloadModel()
+                                } else {
+                                    viewModel.initializeModel()
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Text(
-                                text = if (model.isLoadedInRAM) "Unload from RAM" else "Load Model into RAM",
+                                text = if (isThisModelLoaded) "Unload from RAM" else "Load Model into RAM",
                                 fontSize = 13.sp
                             )
                         }

@@ -2,17 +2,14 @@ package ai.helply.app.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -20,20 +17,17 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import ai.helply.app.ui.HelplyViewModel
 
 data class NotepadNote(
     val id: String,
@@ -50,17 +44,17 @@ data class NotepadNote(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(navController: NavController) {
-    val coroutineScope = rememberCoroutineScope()
+fun HomeScreen(navController: NavController, viewModel: HelplyViewModel) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedNoteForDialog by remember { mutableStateOf<NotepadNote?>(null) }
     var showCreateNoteDialog by remember { mutableStateOf(false) }
 
-    // New note state
+    // State from ViewModel
+    val llmExecutionTrace by viewModel.agentTrace.collectAsState()
+    val isExecutingLLM by viewModel.isAgentRunning.collectAsState()
+
     var newNoteTitle by remember { mutableStateOf("") }
     var newNoteContent by remember { mutableStateOf("") }
-    var isExecutingLLM by remember { mutableStateOf(false) }
-    var llmExecutionTrace by remember { mutableStateOf<List<String>>(emptyList()) }
 
     var notesList by remember {
         mutableStateOf(
@@ -75,7 +69,7 @@ fun HomeScreen(navController: NavController) {
                     tileBgColor = Color(0xFFEFF6FF),
                     iconColor = Color(0xFF3B82F6),
                     assignedAgent = "CollegeIntelligenceAgent",
-                    defaultToolCall = "createExamReminder(course='DBMS', date='2026-10-28')"
+                    defaultToolCall = "enableFocusMode(subject='DBMS', durationDays=3)"
                 ),
                 NotepadNote(
                     id = "2",
@@ -87,7 +81,7 @@ fun HomeScreen(navController: NavController) {
                     tileBgColor = Color(0xFFF0FDF4),
                     iconColor = Color(0xFF22C55E),
                     assignedAgent = "AcademicAgent",
-                    defaultToolCall = "createTask(title='ML Lab Report', deadline='Tomorrow 11:59PM')"
+                    defaultToolCall = "createTask(title='ML Lab Report', subject='Machine Learning', deadlineDays=2)"
                 ),
                 NotepadNote(
                     id = "3",
@@ -111,7 +105,7 @@ fun HomeScreen(navController: NavController) {
                     tileBgColor = Color(0xFFEFF6FF),
                     iconColor = Color(0xFF3B82F6),
                     assignedAgent = "PortfolioAgent",
-                    defaultToolCall = "deployPortfolio(repo='satoru.github.io')"
+                    defaultToolCall = "deployPortfolio(repoName='student-portfolio')"
                 ),
                 NotepadNote(
                     id = "5",
@@ -123,31 +117,7 @@ fun HomeScreen(navController: NavController) {
                     tileBgColor = Color(0xFFFEF2F2),
                     iconColor = Color(0xFFEF4444),
                     assignedAgent = "CollegeIntelligenceAgent",
-                    defaultToolCall = "parseCalendarEvent(event='Edge AI Seminar')"
-                ),
-                NotepadNote(
-                    id = "6",
-                    title = "Python Tips",
-                    contentSnippet = "List Comprehension\nLambda Functions...",
-                    fullContent = "1. List Comprehension: [x**2 for x in range(10) if x%2==0]\n2. Lambda & Map: list(map(lambda x: x*2, items))\n3. Context Managers: with open('file.txt') as f:",
-                    timestamp = "Oct 24",
-                    isPinned = false,
-                    tileBgColor = Color(0xFFF5F3FF),
-                    iconColor = Color(0xFF8B5CF6),
-                    assignedAgent = "AcademicAgent",
-                    defaultToolCall = "createKnowledgeSnippet(tag='python')"
-                ),
-                NotepadNote(
-                    id = "7",
-                    title = "Daily To-Do",
-                    contentSnippet = "☐ Study DBMS\n☐ Complete ML Assignment...",
-                    fullContent = "☐ Study DBMS Normalization Rules\n☐ Complete ML Assignment 3\n☐ Push Helply OS APK build to GitHub\n☐ Review ATS feedback for Placement drive",
-                    timestamp = "Oct 24",
-                    isPinned = false,
-                    tileBgColor = Color(0xFFF1F5F9),
-                    iconColor = Color(0xFF64748B),
-                    assignedAgent = "AcademicAgent",
-                    defaultToolCall = "syncTodoList(count=4)"
+                    defaultToolCall = "updateMemory(title='Edge AI Seminar', type='Workshop', description='On-Device LLM Inference')"
                 )
             )
         )
@@ -156,22 +126,6 @@ fun HomeScreen(navController: NavController) {
     val filteredNotes = notesList.filter {
         it.title.contains(searchQuery, ignoreCase = true) ||
         it.contentSnippet.contains(searchQuery, ignoreCase = true)
-    }
-
-    fun triggerAgentExecutionForNote(note: NotepadNote) {
-        isExecutingLLM = true
-        llmExecutionTrace = emptyList()
-
-        coroutineScope.launch {
-            llmExecutionTrace = llmExecutionTrace + "🧠 [LiteRT Gemma 4 E4B] Tokenizing Note: '${note.title}'"
-            delay(500)
-            llmExecutionTrace = llmExecutionTrace + "🔍 [LLM Router] Identified target agent: ${note.assignedAgent}"
-            delay(500)
-            llmExecutionTrace = llmExecutionTrace + "⚙️ Executing Tool Call: ${note.defaultToolCall}"
-            delay(600)
-            llmExecutionTrace = llmExecutionTrace + "✅ Tool Execution Verified! Results saved in encrypted SQLCipher DB."
-            isExecutingLLM = false
-        }
     }
 
     Scaffold(
@@ -258,7 +212,6 @@ fun HomeScreen(navController: NavController) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Search Bar (Matching Reference Image)
             item {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
@@ -318,7 +271,6 @@ fun HomeScreen(navController: NavController) {
                 }
             }
 
-            // Category & Sort Header (Matching Reference Image)
             item {
                 Row(
                     modifier = Modifier
@@ -355,7 +307,6 @@ fun HomeScreen(navController: NavController) {
                 }
             }
 
-            // Notes List (Matching Reference Image)
             items(filteredNotes) { note ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -363,7 +314,10 @@ fun HomeScreen(navController: NavController) {
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { selectedNoteForDialog = note }
+                        .clickable {
+                            viewModel.clearTrace()
+                            selectedNoteForDialog = note
+                        }
                 ) {
                     Row(
                         modifier = Modifier
@@ -372,7 +326,6 @@ fun HomeScreen(navController: NavController) {
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Colored Icon Box (Matching reference image document icon style)
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = note.tileBgColor,
@@ -441,7 +394,7 @@ fun HomeScreen(navController: NavController) {
         }
     }
 
-    // Detail & AI Agent Dispatch Dialog when a Note is Tapped
+    // Detail & AI Agent Dispatch Dialog
     selectedNoteForDialog?.let { note ->
         AlertDialog(
             onDismissRequest = { selectedNoteForDialog = null },
@@ -511,7 +464,13 @@ fun HomeScreen(navController: NavController) {
             },
             confirmButton = {
                 Button(
-                    onClick = { triggerAgentExecutionForNote(note) },
+                    onClick = {
+                        viewModel.executeAgentDispatch(
+                            noteTitle = note.title,
+                            agentName = note.assignedAgent,
+                            toolCallStr = note.defaultToolCall
+                        )
+                    },
                     enabled = !isExecutingLLM,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
                 ) {
@@ -529,7 +488,6 @@ fun HomeScreen(navController: NavController) {
         )
     }
 
-    // Modal Sheet / Dialog to Add a New Note with Auto-LLM Dispatching
     if (showCreateNoteDialog) {
         AlertDialog(
             onDismissRequest = { showCreateNoteDialog = false },
@@ -570,9 +528,18 @@ fun HomeScreen(navController: NavController) {
                                 tileBgColor = Color(0xFFEFF6FF),
                                 iconColor = Color(0xFF3B82F6),
                                 assignedAgent = "AcademicAgent",
-                                defaultToolCall = "autoDispatchNotepadNote(title='$newNoteTitle')"
+                                defaultToolCall = "createTask(title='$newNoteTitle', subject='General', deadlineDays=3)"
                             )
                             notesList = listOf(newNote) + notesList
+
+                            // Auto-add memory entry in Room DB
+                            viewModel.addMemory(
+                                title = newNoteTitle,
+                                type = "Note",
+                                description = newNoteContent,
+                                source = "Notepad Interface"
+                            )
+
                             newNoteTitle = ""
                             newNoteContent = ""
                             showCreateNoteDialog = false

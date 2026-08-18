@@ -5,8 +5,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,13 +13,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcademicsScreen() {
+fun AcademicsScreen(viewModel: HelplyViewModel) {
     var assignmentText by remember { mutableStateOf("") }
-    var resultText by remember { mutableStateOf("") }
-    var isProcessing by remember { mutableStateOf(false) }
+    val resultText by viewModel.academicResult.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -84,9 +82,8 @@ fun AcademicsScreen() {
                     ) {
                         Button(
                             onClick = {
-                                isProcessing = true
-                                resultText = "Requirements Extracted:\n• Subject: Machine Learning\n• Deliverable: Jupyter Notebook & PDF Report\n• Deadline: Oct 28, 2026\n• Recommended Model: ResNet-18"
-                                isProcessing = false
+                                val input = if (assignmentText.isNotBlank()) assignmentText else "Machine Learning Lab Assignment: Train ResNet-18 model on CIFAR-10 dataset and submit notebook report by Oct 28."
+                                viewModel.extractRequirements(input)
                             },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
@@ -96,9 +93,8 @@ fun AcademicsScreen() {
 
                         OutlinedButton(
                             onClick = {
-                                isProcessing = true
-                                resultText = "PPT & PDF Generation Initialized...\n• Presentation: 10 Slides Compiled\n• Report: PDF Exported to Device Storage."
-                                isProcessing = false
+                                val input = if (assignmentText.isNotBlank()) assignmentText else "DBMS Project Report & Presentation Slides on Indexing Techniques"
+                                viewModel.generateReport(input)
                             },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
@@ -110,7 +106,7 @@ fun AcademicsScreen() {
             }
         }
 
-        if (resultText.isNotEmpty()) {
+        resultText?.let { text ->
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
@@ -136,7 +132,7 @@ fun AcademicsScreen() {
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = resultText,
+                            text = text,
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF1E3A8A)
                         )

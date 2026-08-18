@@ -6,15 +6,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PortfolioScreen() {
+fun PortfolioScreen(viewModel: HelplyViewModel) {
     var selectedTheme by remember { mutableStateOf("Modern Developer") }
-    var deployStatus by remember { mutableStateOf("") }
+    val deployLogs by viewModel.deployStatus.collectAsState()
+    val portfolioHtml by viewModel.portfolioHtml.collectAsState()
 
     val themes = listOf(
         "Minimal Developer",
@@ -24,7 +27,7 @@ fun PortfolioScreen() {
         "Research Portfolio",
         "Fresher Portfolio",
         "Creative Developer",
-        "Clean Light Theme"
+        "Dark Developer"
     )
 
     LazyColumn(
@@ -77,7 +80,7 @@ fun PortfolioScreen() {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            deployStatus = "Synthesizing HTML static bundle...\nCreating GitHub Repository...\nConfiguring GitHub Actions...\nLive URL: https://student.github.io/portfolio/"
+                            viewModel.deployPortfolio(selectedTheme)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
@@ -88,7 +91,7 @@ fun PortfolioScreen() {
             }
         }
 
-        if (deployStatus.isNotEmpty()) {
+        if (deployLogs.isNotEmpty()) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -103,10 +106,38 @@ fun PortfolioScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(6.dp))
+                        deployLogs.forEach { log ->
+                            Text(
+                                text = log,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        portfolioHtml?.let { html ->
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = deployStatus,
+                            text = "Synthesized HTML Source (Preview):",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (html.length > 300) html.take(300) + "\n... [${html.length} chars total]" else html,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp
                         )
                     }
                 }
