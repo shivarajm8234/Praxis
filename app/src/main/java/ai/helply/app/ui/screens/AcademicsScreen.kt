@@ -15,23 +15,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ai.helply.app.domain.EmailCategory
+import ai.helply.app.domain.AIAppClassifierEngine
+import ai.helply.app.domain.ClassifiedApp
 import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcademicsScreen(viewModel: HelplyViewModel) {
+    val context = LocalContext.current
+
     var assignmentText by remember { mutableStateOf("") }
     val isAgentRunning by viewModel.isAgentRunning.collectAsState()
     val autonomousResult by viewModel.autonomousPipelineResult.collectAsState()
 
-    val emails by viewModel.emails.collectAsState()
     val emailScanSummary by viewModel.emailScanSummary.collectAsState()
     val examLockState by viewModel.examLockState.collectAsState()
+
+    var classifiedApps by remember {
+        mutableStateOf(AIAppClassifierEngine.scanInstalledApps(context))
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -244,6 +251,68 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                                 modifier = Modifier.padding(10.dp)
                             )
                         }
+                    }
+                }
+            }
+        }
+
+        // Feature 3: AI App List Classification & Lock Decisions Table
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "🧠 AI App List Classifier & Exam Lock Rules",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "AI automatically scans installed apps: Locks Social Media & YouTube. EXEMPTS Payment apps (GPay, PhonePe, Paytm) and AI tools (ChatGPT, Gemini, Helply OS).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    classifiedApps.forEach { app ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(app.iconEmoji, fontSize = 18.sp)
+                                Column {
+                                    Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                    Text(app.reasoning, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (app.isBlockedDuringExams) Color(0xFFFEF2F2) else Color(0xFFDCFCE7)
+                            ) {
+                                Text(
+                                    text = if (app.isBlockedDuringExams) "BLOCKED 🔒" else "ALLOWED ✅",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (app.isBlockedDuringExams) Color(0xFF991B1B) else Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = Color(0xFFF1F5F9))
                     }
                 }
             }
