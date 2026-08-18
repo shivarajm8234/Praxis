@@ -33,19 +33,6 @@ object AIAppClassifierEngine {
     private val socialKeywords = listOf("instagram", "snapchat", "twitter", "facebook", "tiktok", "reddit", "pinterest", "threads", "tumblr", "whatsapp")
     private val entertainmentKeywords = listOf("youtube", "netflix", "primevideo", "hotstar", "twitch", "pubg", "bgmi", "candycrush", "roblox", "vlc")
 
-    // Standard high-distraction target app catalog
-    private val standardRestrictedApps = listOf(
-        "com.google.android.youtube" to "YouTube",
-        "com.instagram.android" to "Instagram",
-        "com.snapchat.android" to "Snapchat",
-        "com.twitter.android" to "X (Twitter)",
-        "com.reddit.frontpage" to "Reddit",
-        "com.zhiliaoapp.musically" to "TikTok",
-        "com.facebook.katana" to "Facebook",
-        "com.netflix.mediaclient" to "Netflix",
-        "com.amazon.avod.thirdpartyclient" to "Prime Video"
-    )
-
     fun classifyApp(packageName: String, appName: String, usageMs: Long = 0L): ClassifiedApp {
         val pName = packageName.lowercase()
         val aName = appName.lowercase()
@@ -58,7 +45,7 @@ object AIAppClassifierEngine {
                 appName = appName,
                 category = AppCategory.AI_APP_ALLOWED,
                 isBlockedDuringExams = false,
-                reasoning = "AI Assistant App (Allowed for research & study)",
+                reasoning = "AI Study Assistant (Whitelisted)",
                 iconEmoji = "🧠",
                 usageTimeMs = usageMs,
                 usageTimeFormatted = formattedUsage
@@ -72,7 +59,7 @@ object AIAppClassifierEngine {
                 appName = appName,
                 category = AppCategory.PAYMENT_APP_ALLOWED,
                 isBlockedDuringExams = false,
-                reasoning = "Financial & Payment App (Allowed for essential transactions)",
+                reasoning = "Financial & Transactions (Whitelisted)",
                 iconEmoji = "💳",
                 usageTimeMs = usageMs,
                 usageTimeFormatted = formattedUsage
@@ -86,22 +73,22 @@ object AIAppClassifierEngine {
                 appName = appName,
                 category = AppCategory.SOCIAL_MEDIA_BLOCKED,
                 isBlockedDuringExams = true,
-                reasoning = "High Distraction Social Media (Locked 5 days before exam)",
+                reasoning = "Social Media Distraction (Focus Restricted)",
                 iconEmoji = "📸",
                 usageTimeMs = usageMs,
                 usageTimeFormatted = formattedUsage
             )
         }
 
-        // 4. Check YouTube & High Usage Entertainment Apps (STRICT BLOCK)
+        // 4. Check Entertainment Apps (STRICT BLOCK)
         if (entertainmentKeywords.any { pName.contains(it) || aName.contains(it) }) {
             return ClassifiedApp(
                 packageName = packageName,
                 appName = appName,
                 category = AppCategory.HIGH_USAGE_ENTERTAINMENT_BLOCKED,
                 isBlockedDuringExams = true,
-                reasoning = "High Usage Video / Entertainment (Locked 5 days before exam)",
-                iconEmoji = "🔴",
+                reasoning = "Video & Gaming Distraction (Focus Restricted)",
+                iconEmoji = "🎬",
                 usageTimeMs = usageMs,
                 usageTimeFormatted = formattedUsage
             )
@@ -113,8 +100,8 @@ object AIAppClassifierEngine {
             appName = appName,
             category = AppCategory.STUDY_PRODUCTIVITY_ALLOWED,
             isBlockedDuringExams = false,
-            reasoning = "Study / Productivity / System Tool (Allowed)",
-            iconEmoji = "📚",
+            reasoning = "Academic & System Tool (Allowed)",
+            iconEmoji = "📱",
             usageTimeMs = usageMs,
             usageTimeFormatted = formattedUsage
         )
@@ -134,7 +121,7 @@ object AIAppClassifierEngine {
     }
 
     /**
-     * Scans ONLY BLOCKED installed applications along with their screen usage time today.
+     * Scans ONLY installed social media & video entertainment apps along with daily foreground screen time.
      */
     fun scanOnlyBlockedApps(context: Context): List<ClassifiedApp> {
         val listMap = mutableMapOf<String, ClassifiedApp>()
@@ -163,13 +150,14 @@ object AIAppClassifierEngine {
             e.printStackTrace()
         }
 
-        // 1. Scan live installed apps via PackageManager
+        // Scan actual installed apps on the device
         try {
             val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             for (appInfo in installedApps) {
                 val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                 val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
 
+                // Only include user apps or system apps with launcher intents
                 if (!isSystemApp || launchIntent != null) {
                     val appName = pm.getApplicationLabel(appInfo).toString()
                     val packageName = appInfo.packageName
@@ -188,20 +176,11 @@ object AIAppClassifierEngine {
             e.printStackTrace()
         }
 
-        // 2. Ensure standard high-distraction apps are included if not already found
-        standardRestrictedApps.forEach { (pkg, name) ->
-            if (!listMap.containsKey(pkg)) {
-                val usageMs = usageMap[pkg] ?: 0L
-                val classified = classifyApp(pkg, name, usageMs)
-                listMap[pkg] = classified
-            }
-        }
-
         return listMap.values.sortedByDescending { it.usageTimeMs }
     }
 
     /**
-     * Scans ALL installed applications for manual selection dialog.
+     * Scans installed applications for manual selection dialog.
      */
     fun scanInstalledApps(context: Context): List<ClassifiedApp> {
         val listMap = mutableMapOf<String, ClassifiedApp>()
@@ -226,12 +205,8 @@ object AIAppClassifierEngine {
             e.printStackTrace()
         }
 
-        standardRestrictedApps.forEach { (pkg, name) ->
-            if (!listMap.containsKey(pkg)) {
-                listMap[pkg] = classifyApp(pkg, name)
-            }
-        }
-
-        return listMap.values.sortedByDescending { it.isBlockedDuringExams }
+        return listMap.values.sortedWith(
+            compareByDescending<ClassifiedApp> { it.isBlockedDuringExams }.thenBy { it.appName.lowercase() }
+        )
     }
 }

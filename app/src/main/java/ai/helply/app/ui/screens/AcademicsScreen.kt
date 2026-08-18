@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -347,13 +348,16 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
 
         // Feature 3: RESTRICTED/BLOCKED APPS WITH USAGE TIME & POPUP MANUAL SELECTION
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 2.dp,
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFF1F5F9))
+                ),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -361,15 +365,36 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color(0xFFEF4444))
-                            Text(
-                                text = "Restricted Distraction Apps (${blockedAppsWithTime.size})",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF991B1B)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFEF2F2),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            Column {
+                                Text(
+                                    text = "Restricted Distraction Apps",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "${blockedAppsWithTime.size} Installed Distractions Detected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
                         }
 
                         Button(
@@ -380,74 +405,128 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                                 showAppSelectionDialog = true
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("🔒 Select Apps to Lock", fontSize = 11.sp, color = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Select Apps", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "Exclusively lists social media & video entertainment apps with daily usage time. Click 'Select Apps to Lock' to manually pick apps to lock without override capability.",
+                        text = "Real-time list of installed social media & video apps with screen time metrics. Use 'Select Apps' to lock any app with zero manual override capability.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     if (blockedAppsWithTime.isEmpty()) {
-                        Text(
-                            text = "No distraction apps detected on device.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-                    } else {
-                        blockedAppsWithTime.forEach { app ->
-                            val isManuallyLocked = manuallyLockedPackages.contains(app.packageName)
-                            val isEffectiveLockActive = isManuallyLocked || examLockState.isLockActive
-
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(app.iconEmoji, fontSize = 22.sp)
-                                    Column {
-                                        Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            text = "Usage: ${app.usageTimeFormatted}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFFC2410C),
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
+                                Text("✨", fontSize = 20.sp)
+                                Text(
+                                    text = "Zero distraction apps detected on your device.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF64748B),
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            blockedAppsWithTime.forEach { app ->
+                                val isManuallyLocked = manuallyLockedPackages.contains(app.packageName)
+                                val isEffectiveLockActive = isManuallyLocked || examLockState.isLockActive
 
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isEffectiveLockActive) Color(0xFFFEF2F2) else Color(0xFFF1F5F9)
+                                    color = if (isEffectiveLockActive) Color(0xFFFEF2F2) else Color(0xFFF8FAFC),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = CardDefaults.outlinedCardBorder().copy(
+                                        brush = androidx.compose.ui.graphics.SolidColor(
+                                            if (isEffectiveLockActive) Color(0xFFFECACA) else Color(0xFFE2E8F0)
+                                        )
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        text = if (isEffectiveLockActive) "LOCKED 🔒" else "RESTRICTED 🔴",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isEffectiveLockActive) Color(0xFF991B1B) else Color(0xFFEA580C),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        fontSize = 10.sp
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color.White,
+                                                shadowElevation = 1.dp,
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(app.iconEmoji, fontSize = 20.sp)
+                                                }
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = app.appName,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF0F172A)
+                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "⏱️ ${app.usageTimeFormatted}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Color(0xFFC2410C),
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 11.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isEffectiveLockActive) Color(0xFFDC2626) else Color(0xFFEA580C)
+                                        ) {
+                                            Text(
+                                                text = if (isEffectiveLockActive) "LOCKED 🔒" else "RESTRICTED 🔴",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                            HorizontalDivider(color = Color(0xFFF1F5F9))
                         }
                     }
                 }
@@ -465,7 +544,10 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🔒 Manual App Lockdown Picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Column {
+                        Text("🔒 Manual App Lockdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Pick installed apps to enforce strict lock", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                    }
                     IconButton(onClick = { showAppSelectionDialog = false }) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
                     }
@@ -475,22 +557,19 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(380.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .height(400.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Select any installed app to lock manually. Once locked, background enforcer strictly kicks out access with NO manual override allowed!",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF475569)
-                    )
-
                     // Search field
                     OutlinedTextField(
                         value = dialogSearchQuery,
                         onValueChange = { dialogSearchQuery = it },
-                        placeholder = { Text("Search installed apps...", fontSize = 12.sp) },
+                        placeholder = { Text("Search installed applications...", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color(0xFF64748B))
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         singleLine = true
                     )
 
@@ -498,55 +577,70 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(top = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(filteredDialogApps) { app ->
                             val isChecked = manuallyLockedPackages.contains(app.packageName)
 
-                            Row(
+                            Surface(
+                                color = if (isChecked) Color(0xFFFEF2F2) else Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(12.dp),
+                                border = CardDefaults.outlinedCardBorder().copy(
+                                    brush = androidx.compose.ui.graphics.SolidColor(
+                                        if (isChecked) Color(0xFFFECACA) else Color(0xFFE2E8F0)
+                                    )
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
                                         viewModel.toggleManualAppLock(app.packageName)
                                     }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(app.iconEmoji, fontSize = 20.sp)
-                                    Column {
-                                        Text(
-                                            text = app.appName,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = app.packageName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF64748B),
-                                            fontSize = 9.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(app.iconEmoji, fontSize = 22.sp)
+                                        Column {
+                                            Text(
+                                                text = app.appName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = app.packageName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF64748B),
+                                                fontSize = 9.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
-                                }
 
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = {
-                                        viewModel.toggleManualAppLock(app.packageName)
-                                    }
-                                )
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = {
+                                            viewModel.toggleManualAppLock(app.packageName)
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Color(0xFFDC2626)
+                                        )
+                                    )
+                                }
                             }
-                            HorizontalDivider(color = Color(0xFFF1F5F9))
                         }
                     }
                 }
@@ -554,11 +648,13 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             confirmButton = {
                 Button(
                     onClick = { showAppSelectionDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Done (${manuallyLockedPackages.size} Locked)")
+                    Text("Save & Apply (${manuallyLockedPackages.size} Locked)", fontWeight = FontWeight.Bold)
                 }
             }
         )
     }
 }
+
