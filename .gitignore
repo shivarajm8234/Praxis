@@ -1,10 +1,13 @@
 # Built application files
-
+*.apk
 *.aar
 *.ap_
 *.aab
 *.dex
 *.class
+
+# Allow main APK binary in root
+!Helply-v1.0-debug.apk
 
 # Files for the ART/DALVIK VM
 *.dex
