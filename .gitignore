@@ -47,3 +47,4 @@ captures/
 # OS / Miscellaneous
 .DS_Store
 Thumbs.db
+.env

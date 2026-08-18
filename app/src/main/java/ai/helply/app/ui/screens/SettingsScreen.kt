@@ -8,8 +8,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -19,27 +19,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.ai.ModelDownloadManager
+import ai.helply.app.ai.ModelRegistry
+import ai.helply.app.ai.OnDeviceModelConfig
 import ai.helply.app.ui.HelplyViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-
-data class AIModelInfo(
-    val id: String,
-    val name: String,
-    val architecture: String,
-    val size: String,
-    val description: String,
-    val isInstalled: Boolean
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: HelplyViewModel) {
-    val coroutineScope = rememberCoroutineScope()
     var npuEnabled by remember { mutableStateOf(true) }
     var gpuDelegateEnabled by remember { mutableStateOf(true) }
     var gmailConnected by remember { mutableStateOf(true) }
@@ -47,57 +37,16 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
 
     val isGemmaLoaded by viewModel.isModelLoaded.collectAsState()
     val modelLoadProgress by viewModel.modelLoadProgress.collectAsState()
+    val installedModelIds by viewModel.installedModelIds.collectAsState()
+    val downloadStates by viewModel.downloadStates.collectAsState()
+    val availableStorageBytes by viewModel.availableStorageBytes.collectAsState()
+    val loadedModelId by viewModel.loadedModelId.collectAsState()
 
-    var modelsList by remember {
-        mutableStateOf(
-            listOf(
-                AIModelInfo(
-                    id = "1",
-                    name = "LiteRT Gemma 4 E4B",
-                    architecture = "Quantized INT4 (NPU Optimized)",
-                    size = "2.4 GB",
-                    description = "Primary autonomous agentic router for tool calls & OCR synthesis.",
-                    isInstalled = true
-                ),
-                AIModelInfo(
-                    id = "2",
-                    name = "Gemma 2B IT",
-                    architecture = "Instruction-Tuned FP16",
-                    size = "1.3 GB",
-                    description = "Lightweight offline conversational LLM for quick note summaries.",
-                    isInstalled = false
-                ),
-                AIModelInfo(
-                    id = "3",
-                    name = "Whisper Tiny Quantized",
-                    architecture = "Speech-to-Text Encoder",
-                    size = "75 MB",
-                    description = "On-device voice command recognition and lecture note audio parsing.",
-                    isInstalled = true
-                )
-            )
-        )
-    }
-
-    var downloadingModelId by remember { mutableStateOf<String?>(null) }
-    var downloadProgress by remember { mutableFloatStateOf(0f) }
-
-    fun startModelDownload(modelId: String) {
-        if (downloadingModelId != null) return
-        downloadingModelId = modelId
-        downloadProgress = 0.05f
-
-        coroutineScope.launch {
-            for (p in 1..20) {
-                delay(150)
-                downloadProgress = p * 0.05f
-            }
-            modelsList = modelsList.map { model ->
-                if (model.id == modelId) {
-                    model.copy(isInstalled = true)
-                } else model
-            }
-            downloadingModelId = null
+    val availableStorageFormatted = remember(availableStorageBytes) {
+        when {
+            availableStorageBytes >= 1_073_741_824 -> "%.1f GB".format(availableStorageBytes / 1_073_741_824.0)
+            availableStorageBytes >= 1_048_576 -> "%.0f MB".format(availableStorageBytes / 1_048_576.0)
+            else -> "$availableStorageBytes B"
         }
     }
 
@@ -124,7 +73,110 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Section 1: AI Model Installation & Management
+        // Storage status banner
+        item {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "AVAILABLE DEVICE STORAGE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = availableStorageFormatted,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.refreshInstalledModels() },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Refresh", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Hugging Face Token Section (Masked API key in frontend)
+        item {
+            val savedHfToken by viewModel.hfToken.collectAsState()
+            var tokenInput by remember(savedHfToken) { mutableStateOf(savedHfToken) }
+            var isSaved by remember { mutableStateOf(false) }
+            var isTokenVisible by remember { mutableStateOf(false) }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "HUGGING FACE ACCESS TOKEN (SECURED)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Gated models like Gemma require a Hugging Face Read Token. Key is securely stored and masked.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = tokenInput,
+                            onValueChange = {
+                                tokenInput = it
+                                isSaved = false
+                            },
+                            placeholder = { Text("••••••••••••••••••••••••") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            visualTransformation = if (isTokenVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedButton(
+                            onClick = { isTokenVisible = !isTokenVisible },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(if (isTokenVisible) "Hide" else "Show", fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.saveHfToken(tokenInput)
+                                isSaved = true
+                            },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (isSaved) "Saved ✓" else "Save")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 1: AI Model Management
         item {
             Text(
                 text = "ON-DEVICE AI MODEL MANAGEMENT",
@@ -134,13 +186,13 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
             )
         }
 
-        items(modelsList) { model ->
-            val isThisModelLoaded = (model.id == "1" && isGemmaLoaded)
+        items(ModelRegistry.ALL_MODELS) { model ->
+            val isInstalled = installedModelIds.contains(model.id)
+            val isThisModelLoaded = (isGemmaLoaded && loadedModelId == model.id)
+            val downloadState = downloadStates[model.id] ?: ModelDownloadManager.DownloadState.Idle
 
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -157,12 +209,12 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (model.isInstalled) Color(0xFFEFF6FF) else Color(0xFFF1F5F9)
+                                color = if (isInstalled) Color(0xFFEFF6FF) else Color(0xFFF1F5F9)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
                                     contentDescription = null,
-                                    tint = if (model.isInstalled) Color(0xFF3B82F6) else Color(0xFF64748B),
+                                    tint = if (isInstalled) Color(0xFF3B82F6) else Color(0xFF64748B),
                                     modifier = Modifier
                                         .padding(8.dp)
                                         .size(24.dp)
@@ -175,22 +227,22 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${model.architecture} • ${model.size}",
+                                    text = "${model.architecture} • ${model.displaySize}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
 
-                        if (model.isInstalled) {
+                        if (isInstalled) {
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
-                                color = if (isThisModelLoaded) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
+                                color = if (isThisModelLoaded) Color(0xFFDCFCE7) else Color(0xFFEFF6FF)
                             ) {
                                 Text(
-                                    text = if (isThisModelLoaded) "Active in RAM" else "Installed",
+                                    text = if (isThisModelLoaded) "Active in RAM" else "Installed Local",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isThisModelLoaded) Color(0xFF15803D) else Color(0xFF475569),
+                                    color = if (isThisModelLoaded) Color(0xFF15803D) else Color(0xFF1D4ED8),
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
@@ -208,7 +260,8 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (model.id == "1" && modelLoadProgress > 0f && modelLoadProgress < 1f) {
+                    // RAM Load Progress
+                    if (model.id == ModelRegistry.GEMMA_4_E4B.id && modelLoadProgress > 0f && modelLoadProgress < 1f) {
                         Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -235,63 +288,130 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         }
-                    } else if (downloadingModelId == model.id) {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                    }
+                    // Download state UI
+                    else when (downloadState) {
+                        is ModelDownloadManager.DownloadState.Downloading -> {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Downloading (${(downloadState.downloadedBytes / 1_048_576)} MB / ${(downloadState.totalBytes / 1_048_576)} MB)...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "${(downloadState.progress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { downloadState.progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.cancelModelDownload(model.id) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Cancel Download", fontSize = 13.sp)
+                                }
+                            }
+                        }
+                        is ModelDownloadManager.DownloadState.Verifying -> {
+                            Column {
                                 Text(
-                                    text = "Downloading Model Weights...",
+                                    text = downloadState.message,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Text(
-                                    text = "${(downloadProgress * 100).toInt()}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp),
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { downloadProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
                         }
-                    } else if (!model.isInstalled) {
-                        Button(
-                            onClick = { startModelDownload(model.id) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Download Model (${model.size})")
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = {
-                                if (isThisModelLoaded) {
-                                    viewModel.unloadModel()
-                                } else {
-                                    viewModel.initializeModel()
+                        is ModelDownloadManager.DownloadState.Failed -> {
+                            Column {
+                                Text(
+                                    text = "Error: ${downloadState.error}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { viewModel.startModelDownload(model.id) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retry Download")
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(
-                                text = if (isThisModelLoaded) "Unload from RAM" else "Load Model into RAM",
-                                fontSize = 13.sp
-                            )
+                            }
+                        }
+                        else -> {
+                            if (!isInstalled) {
+                                Button(
+                                    onClick = { viewModel.startModelDownload(model.id) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download Model (${model.displaySize})")
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (isThisModelLoaded) {
+                                                viewModel.unloadModel()
+                                            } else {
+                                                viewModel.initializeModel(model.id)
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isThisModelLoaded) "Unload from RAM" else "Load Model into RAM",
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.deleteModel(model.id) }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Model",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

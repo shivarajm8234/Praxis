@@ -13,6 +13,10 @@ import ai.helply.app.data.entities.*
 import ai.helply.app.domain.*
 import ai.helply.app.tools.ToolRegistry
 import ai.helply.app.tools.ToolResult
+import ai.helply.app.ai.ModelDownloadManager
+import ai.helply.app.ai.ModelRepository
+import ai.helply.app.ai.ModelRegistry
+import ai.helply.app.ai.OnDeviceModelConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -25,10 +29,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+data class ChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val sender: String, // "User" or "AI"
+    val text: String,
+    val modelName: String? = null,
+    val modelFileSizeMb: Long? = null,
+    val binaryFileName: String? = null,
+    val hardwareDelegate: String? = null,
+    val timestamp: String = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+)
+
 @HiltViewModel
 class HelplyViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gemmaEngine: GemmaEngineManager,
+    val modelRepository: ModelRepository,
+    val modelDownloadManager: ModelDownloadManager,
     private val toolRegistry: ToolRegistry,
     private val memoryDao: MemoryDao,
     private val academicDao: AcademicDao,
@@ -39,8 +56,88 @@ class HelplyViewModel @Inject constructor(
     private val _isModelLoaded = MutableStateFlow(false)
     val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
 
+    private val _loadedModelId = MutableStateFlow<String?>(null)
+    val loadedModelId: StateFlow<String?> = _loadedModelId.asStateFlow()
+
     private val _modelLoadProgress = MutableStateFlow(0f)
     val modelLoadProgress: StateFlow<Float> = _modelLoadProgress.asStateFlow()
+
+    val downloadStates: StateFlow<Map<String, ModelDownloadManager.DownloadState>> =
+        modelDownloadManager.downloadStates
+
+    private val _installedModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val installedModelIds: StateFlow<Set<String>> = _installedModelIds.asStateFlow()
+
+    private val _availableStorageBytes = MutableStateFlow(0L)
+    val availableStorageBytes: StateFlow<Long> = _availableStorageBytes.asStateFlow()
+
+    private val _hfToken = MutableStateFlow(modelRepository.getHfToken())
+    val hfToken: StateFlow<String> = _hfToken.asStateFlow()
+
+    fun saveHfToken(token: String) {
+        modelRepository.setHfToken(token)
+        _hfToken.value = token
+    }
+
+    // ─── Chatbot State ─────────────────────────────────
+    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(listOf(
+        ChatMessage(
+            sender = "AI",
+            text = "Welcome to Helply On-Device AI Chat! Select a downloaded model above (Qwen 2.5, Gemma 2B, or Whisper Tiny) and chat offline.",
+            modelName = "Helply OS Router"
+        )
+    ))
+    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
+
+    private val _selectedChatModelId = MutableStateFlow(ModelRegistry.GEMMA_4B_IT.id)
+    val selectedChatModelId: StateFlow<String> = _selectedChatModelId.asStateFlow()
+
+    fun selectChatModel(modelId: String) {
+        _selectedChatModelId.value = modelId
+        if (_loadedModelId.value != modelId && modelRepository.isModelInstalled(modelId)) {
+            initializeModel(modelId)
+        }
+    }
+
+    fun sendChatMessage(userText: String) {
+        if (userText.isBlank()) return
+        val userMsg = ChatMessage(sender = "User", text = userText)
+        _chatMessages.value = _chatMessages.value + userMsg
+
+        val modelId = _selectedChatModelId.value
+        val modelConfig = ModelRegistry.getById(modelId) ?: ModelRegistry.QWEN_05B
+        val modelFile = modelRepository.getModelFile(modelId)
+        val fileSizeMb = if (modelFile != null && modelFile.exists()) modelFile.length() / (1024 * 1024) else modelConfig.sizeBytes / (1024 * 1024)
+        val binaryFileName = if (modelFile != null && modelFile.exists()) modelFile.name else modelConfig.fileName
+
+        viewModelScope.launch {
+            if (gemmaEngine.getLoadedModelId() != modelId) {
+                val success = gemmaEngine.initializeModel(modelId) { }
+                _isModelLoaded.value = success
+                _loadedModelId.value = if (success) modelId else null
+            }
+
+            val aiMsgId = java.util.UUID.randomUUID().toString()
+            val initialAiMsg = ChatMessage(
+                id = aiMsgId,
+                sender = "AI",
+                text = "...",
+                modelName = modelConfig.name,
+                modelFileSizeMb = fileSizeMb,
+                binaryFileName = binaryFileName,
+                hardwareDelegate = "Hexagon NPU / OpenCL GPU"
+            )
+            _chatMessages.value = _chatMessages.value + initialAiMsg
+
+            var accumulatedText = ""
+            gemmaEngine.generateStreamingResponse(prompt = userText, modelId = modelId).collect { chunk ->
+                accumulatedText += chunk
+                _chatMessages.value = _chatMessages.value.map { msg ->
+                    if (msg.id == aiMsgId) msg.copy(text = accumulatedText) else msg
+                }
+            }
+        }
+    }
 
     // ─── Agent Execution Trace ──────────────────────────
     private val _agentTrace = MutableStateFlow<List<String>>(emptyList())
@@ -102,6 +199,9 @@ class HelplyViewModel @Inject constructor(
         }
         _emails.value = emptyList()
 
+        // Sync local model installation status on launch
+        refreshInstalledModels()
+
         // Continuous App Lock Monitor Loop
         startAppLockEnforcementLoop()
     }
@@ -138,20 +238,61 @@ class HelplyViewModel @Inject constructor(
         }
     }
 
+    fun refreshInstalledModels() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val installed = modelRepository.getInstalledModelIds().toSet()
+            _installedModelIds.value = installed
+            _availableStorageBytes.value = modelRepository.getAvailableStorageBytes()
+        }
+    }
+
     // ─── AI Model Operations ────────────────────────────
-    fun initializeModel() {
+    fun startModelDownload(modelId: String) {
+        val config = ModelRegistry.getById(modelId) ?: return
         viewModelScope.launch {
-            _modelLoadProgress.value = 0f
-            val success = gemmaEngine.initializeModel { progress ->
+            val success = modelDownloadManager.downloadModel(config)
+            refreshInstalledModels()
+            if (success && modelId == ModelRegistry.GEMMA_4_E4B.id) {
+                initializeModel(modelId)
+            }
+        }
+    }
+
+    fun cancelModelDownload(modelId: String) {
+        modelDownloadManager.cancelDownload(modelId)
+    }
+
+    fun deleteModel(modelId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (gemmaEngine.getLoadedModelId() == modelId) {
+                gemmaEngine.unloadModel()
+                _isModelLoaded.value = false
+            }
+            modelDownloadManager.deleteModel(modelId)
+            refreshInstalledModels()
+        }
+    }
+
+    fun initializeModel(modelId: String = _selectedChatModelId.value) {
+        viewModelScope.launch {
+            _modelLoadProgress.value = 0.05f
+            if (_loadedModelId.value != null && _loadedModelId.value != modelId) {
+                gemmaEngine.unloadModel()
+                _isModelLoaded.value = false
+                _loadedModelId.value = null
+            }
+            val success = gemmaEngine.initializeModel(modelId) { progress ->
                 _modelLoadProgress.value = progress
             }
             _isModelLoaded.value = success
+            _loadedModelId.value = if (success) modelId else null
         }
     }
 
     fun unloadModel() {
         gemmaEngine.unloadModel()
         _isModelLoaded.value = false
+        _loadedModelId.value = null
         _modelLoadProgress.value = 0f
     }
 

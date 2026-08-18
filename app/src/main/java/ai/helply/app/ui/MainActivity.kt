@@ -7,10 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -31,21 +33,65 @@ import androidx.navigation.compose.rememberNavController
 import ai.helply.app.core.theme.HelplyTheme
 import ai.helply.app.ui.screens.*
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @javax.inject.Inject
+    lateinit var gemmaEngine: ai.helply.app.ai.GemmaEngineManager
+
+    private val inferenceReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val prompt = intent?.getStringExtra("prompt") ?: "Summarize key concepts of Computer Science & AI"
+            val modelId = intent?.getStringExtra("model") ?: "qwen-05b-it"
+
+            android.util.Log.d("AI_RESPONSE", "==================================================")
+            android.util.Log.d("AI_RESPONSE", "ADB REQUEST RECEIVED | Model: $modelId | Prompt: \"$prompt\"")
+            android.util.Log.d("AI_RESPONSE", "==================================================")
+
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                gemmaEngine.initializeModel(modelId) { }
+                gemmaEngine.generateStreamingResponse(prompt = prompt, modelId = modelId).collect { chunk ->
+                    android.util.Log.d("AI_RESPONSE", chunk)
+                }
+                android.util.Log.d("AI_RESPONSE", "==================================================")
+                android.util.Log.d("AI_RESPONSE", "END OF AI INFERENCE RESPONSE")
+                android.util.Log.d("AI_RESPONSE", "==================================================")
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val filter = android.content.IntentFilter("ai.helply.app.TEST_INFERENCE")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(inferenceReceiver, filter, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(inferenceReceiver, filter)
+        }
+
         setContent {
             HelplyTheme {
                 HelplyAppNavigation()
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(inferenceReceiver)
+        } catch (_: Exception) {}
+    }
 }
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
+    object Chatbot : Screen("chatbot", "AI Chat", Icons.Default.Send)
     object Academics : Screen("academics", "Academics", Icons.Default.Edit)
     object NotepadMemory : Screen("memory", "Memory", Icons.Default.Star)
     object Placements : Screen("placements", "Placements", Icons.Default.Person)
@@ -63,7 +109,7 @@ fun HelplyAppNavigation() {
 
     val viewModel: HelplyViewModel = hiltViewModel()
 
-    // 5 Clean Footer Navigation Tabs (Profile moved to Top Header!)
+    // 5 Clean Footer Navigation Tabs
     val bottomNavScreens = listOf(
         Screen.Home,
         Screen.Academics,
@@ -74,7 +120,7 @@ fun HelplyAppNavigation() {
 
     Scaffold(
         topBar = {
-            // Top Bar with Profile Button on the Top Right
+            // Top Bar with Profile Button & AI Chat Button visible on EVERY section
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp,
@@ -98,6 +144,30 @@ fun HelplyAppNavigation() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF4F46E5),
+                            modifier = Modifier.clickable {
+                                if (currentRoute != Screen.Chatbot.route) {
+                                    navController.navigate(Screen.Chatbot.route)
+                                }
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text = "🤖", fontSize = 13.sp)
+                                Text(
+                                    text = "AI Chat",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
                         IconButton(
                             onClick = {
                                 if (currentRoute != Screen.Portfolio.route) {
@@ -184,6 +254,7 @@ fun HelplyAppNavigation() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Home.route) { HomeScreen(navController, viewModel) }
+            composable(Screen.Chatbot.route) { ChatbotScreen(viewModel) }
             composable(Screen.Academics.route) { AcademicsScreen(viewModel) }
             composable(Screen.NotepadMemory.route) { MemoryScreen(viewModel) }
             composable(Screen.Placements.route) { PlacementScreen(viewModel) }

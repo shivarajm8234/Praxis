@@ -2,6 +2,8 @@ package ai.helply.app.di
 
 import android.content.Context
 import ai.helply.app.ai.GemmaEngineManager
+import ai.helply.app.ai.ModelDownloadManager
+import ai.helply.app.ai.ModelRepository
 import ai.helply.app.data.db.HelplyDatabase
 import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.AcademicDao
@@ -45,8 +47,26 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideGemmaEngineManager(@ApplicationContext context: Context): GemmaEngineManager {
-        return GemmaEngineManager(context)
+    fun provideModelRepository(@ApplicationContext context: Context): ModelRepository {
+        return ModelRepository(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideModelDownloadManager(
+        @ApplicationContext context: Context,
+        modelRepository: ModelRepository
+    ): ModelDownloadManager {
+        return ModelDownloadManager(context, modelRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideGemmaEngineManager(
+        @ApplicationContext context: Context,
+        modelRepository: ModelRepository
+    ): GemmaEngineManager {
+        return GemmaEngineManager(context, modelRepository)
     }
 
     @Provides

@@ -51,6 +51,14 @@
             android:name=".ui.AppLockOverlayActivity"
             android:exported="false"
             android:theme="@style/Theme.Helply" />
+
+        <receiver
+            android:name=".ai.AdbInferenceReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="ai.helply.app.TEST_INFERENCE" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
