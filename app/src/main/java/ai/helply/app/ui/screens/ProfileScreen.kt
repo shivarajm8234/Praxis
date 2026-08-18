@@ -9,28 +9,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.helply.app.core.AppLockPermissionManager
 import ai.helply.app.ui.HelplyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(viewModel: HelplyViewModel) {
+    val context = LocalContext.current
+
     var studentName by remember { mutableStateOf("Satoru Gojo") }
     var usnNumber by remember { mutableStateOf("1VA21CS088") }
     var degreeBranch by remember { mutableStateOf("B.Tech - Computer Science & Engg") }
     var currentCgpa by remember { mutableStateOf("9.42 / 10.0") }
-    var graduationYear by remember { mutableStateOf("2025") }
     var masterResumeName by remember { mutableStateOf("Satoru_Gojo_Master_Resume_2024.pdf") }
     var portfolioUrl by remember { mutableStateOf("https://satoru.github.io/portfolio") }
+
+    var hasUsagePermission by remember { mutableStateOf(AppLockPermissionManager.hasUsageStatsPermission(context)) }
+    var hasOverlayPermission by remember { mutableStateOf(AppLockPermissionManager.hasOverlayPermission(context)) }
 
     val examLockState by viewModel.examLockState.collectAsState()
     val memories by viewModel.memories.collectAsState()
@@ -131,72 +137,87 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Active 5-Day Social Media Lockdown Monitor
+        // Feature: App Lock Permission Setup Card
         item {
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (examLockState.isLockActive) Color(0xFFFEF2F2) else Color(0xFFF8FAFC)
-                ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color(0xFF4F46E5))
+                        Text(
+                            text = "App Lock Security Permissions",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "To lock social media apps during the 5-day pre-exam window, grant Usage Access & Display Over Other Apps permissions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Permission 1: Usage Stats Access
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = if (examLockState.isLockActive) Color(0xFFEF4444) else Color(0xFF64748B)
-                            )
-                            Text(
-                                text = "5-Day Exam Focus Lockdown",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (examLockState.isLockActive) Color(0xFF991B1B) else Color(0xFF334155)
-                            )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("1. Usage Access Permission", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Detects foreground social media apps", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
 
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (examLockState.isLockActive) Color(0xFFFCA5A5) else Color(0xFFE2E8F0)
-                        ) {
-                            Text(
-                                text = if (examLockState.isLockActive) "LOCKED 🔒" else "INACTIVE",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (examLockState.isLockActive) Color(0xFF7F1D1D) else Color(0xFF475569),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                        if (hasUsagePermission) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981))
+                        } else {
+                            Button(
+                                onClick = {
+                                    AppLockPermissionManager.openUsageStatsSettings(context)
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Grant", fontSize = 11.sp)
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-                    if (examLockState.isLockActive) {
-                        Text(
-                            text = "Exam Circular Detected: ${examLockState.examTitle}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF7F1D1D),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Social media apps (Instagram, YouTube, X, Reddit, Snapchat) are strictly locked until exam completion.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF991B1B)
-                        )
-                    } else {
-                        Text(
-                            text = "No active exam circular within 5-day window. Social media app locks will automatically engage when college circulars are ingested.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // Permission 2: Display Over Other Apps (Overlay)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("2. Display Over Other Apps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Renders focus lock screen during exams", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        if (hasOverlayPermission) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981))
+                        } else {
+                            Button(
+                                onClick = {
+                                    AppLockPermissionManager.openOverlaySettings(context)
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Grant", fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
             }
