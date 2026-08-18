@@ -37,8 +37,8 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
     val emailScanSummary by viewModel.emailScanSummary.collectAsState()
     val examLockState by viewModel.examLockState.collectAsState()
 
-    var classifiedApps by remember {
-        mutableStateOf(AIAppClassifierEngine.scanInstalledApps(context))
+    var blockedAppsWithTime by remember {
+        mutableStateOf(AIAppClassifierEngine.scanOnlyBlockedApps(context))
     }
 
     LazyColumn(
@@ -171,7 +171,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Feature 2: Real College Email Scanner & Live App Enforcement Toggle
+        // Feature 2: College Email Scanner & Live Lockdown Switch
         item {
             Card(
                 colors = CardDefaults.cardColors(
@@ -256,7 +256,7 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
             }
         }
 
-        // Feature 3: Real Device Installed Apps Classification Table
+        // Feature 3: ONLY BLOCKED APPS ALONG WITH SCREEN USAGE TIME
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -270,62 +270,83 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "📱 Real Scanned Device Apps (${classifiedApps.size})",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color(0xFFEF4444))
+                            Text(
+                                text = "Blocked Distraction Apps (${blockedAppsWithTime.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B)
+                            )
+                        }
 
                         TextButton(onClick = {
-                            classifiedApps = AIAppClassifierEngine.scanInstalledApps(context)
+                            blockedAppsWithTime = AIAppClassifierEngine.scanOnlyBlockedApps(context)
                         }) {
-                            Text("Rescan Device", fontSize = 11.sp)
+                            Text("Refresh", fontSize = 11.sp)
                         }
                     }
 
                     Text(
-                        text = "Scanned live from PackageManager. Locks Social Media & YouTube while preserving Payment apps (GPay, PhonePe, Paytm) and AI tools.",
+                        text = "Exclusively displays social media & high usage video apps along with screen usage time today.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    classifiedApps.take(15).forEach { app ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    if (blockedAppsWithTime.isEmpty()) {
+                        Text(
+                            text = "No distraction apps detected on device.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        blockedAppsWithTime.forEach { app ->
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(app.iconEmoji, fontSize = 18.sp)
-                                Column {
-                                    Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(app.iconEmoji, fontSize = 22.sp)
+                                    Column {
+                                        Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = "Usage: ${app.usageTimeFormatted}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFFC2410C),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFFFEF2F2)
+                                ) {
+                                    Text(
+                                        text = "BLOCKED 🔒",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF991B1B),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        fontSize = 11.sp
+                                    )
                                 }
                             }
-
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = if (app.isBlockedDuringExams) Color(0xFFFEF2F2) else Color(0xFFDCFCE7)
-                            ) {
-                                Text(
-                                    text = if (app.isBlockedDuringExams) "BLOCKED 🔒" else "ALLOWED ✅",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (app.isBlockedDuringExams) Color(0xFF991B1B) else Color(0xFF15803D),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                    fontSize = 10.sp
-                                )
-                            }
+                            HorizontalDivider(color = Color(0xFFF1F5F9))
                         }
-                        HorizontalDivider(color = Color(0xFFF1F5F9))
                     }
                 }
             }
