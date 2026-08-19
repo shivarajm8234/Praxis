@@ -3,6 +3,8 @@ package ai.helply.app.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -64,8 +66,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val viewModel: HelplyViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[HelplyViewModel::class.java]
+    }
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleOAuthRedirect(intent)
 
         val filter = android.content.IntentFilter("ai.helply.app.TEST_INFERENCE")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -76,8 +84,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             HelplyTheme {
-                HelplyAppNavigation()
+                HelplyAppNavigation(viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOAuthRedirect(intent)
+    }
+
+    private fun handleOAuthRedirect(intent: android.content.Intent?) {
+        val uri = intent?.data ?: return
+        android.util.Log.d("HELPLY_OAUTH", "OAuth redirect received: $uri")
+        val code = uri.getQueryParameter("code")
+        android.util.Log.d("HELPLY_OAUTH", "Extracted code: $code")
+        if (!code.isNullOrBlank()) {
+            android.util.Log.d("HELPLY_OAUTH", "Calling handleOAuthCode with code: ${code.take(6)}...")
+            viewModel.handleOAuthCode(code)
         }
     }
 
@@ -88,6 +113,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {}
     }
 }
+
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
@@ -102,14 +128,13 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HelplyAppNavigation() {
+fun HelplyAppNavigation(viewModel: HelplyViewModel = hiltViewModel()) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Home.route
 
-    val viewModel: HelplyViewModel = hiltViewModel()
-
     // 5 Clean Footer Navigation Tabs
+
     val bottomNavScreens = listOf(
         Screen.Home,
         Screen.Academics,

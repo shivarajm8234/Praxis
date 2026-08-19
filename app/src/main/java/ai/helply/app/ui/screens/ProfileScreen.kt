@@ -1,5 +1,7 @@
 package ai.helply.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -239,6 +241,173 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
             }
         }
 
+        // GitHub OAuth Login & Repository Access Card
+        item {
+            val githubUser by viewModel.githubUser.collectAsState()
+            val githubRepos by viewModel.githubRepos.collectAsState()
+            val isLoggingIn by viewModel.isLoggingInGithub.collectAsState()
+            var githubInput by remember { mutableStateOf("shivarajm8234") }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "GITHUB ACCOUNT & REPOSITORY ACCESS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (githubUser != null) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color(0xFFDCFCE7)
+                            ) {
+                                Text(
+                                    text = "Connected ✓",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF15803D),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (githubUser == null) {
+                        Text(
+                            text = "Connect your GitHub account to access repositories and enable automated portfolio synchronization.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Login with GitHub via Chrome Custom Tab
+                        Button(
+                            onClick = {
+                                val authUrl = "https://github.com/login/oauth/authorize?client_id=${ai.helply.app.domain.GitHubAppManager.CLIENT_ID}&redirect_uri=helply%3A%2F%2Foauth%2Fcallback&scope=repo%20user"
+                                val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
+                                    .setShowTitle(true)
+                                    .build()
+                                customTabsIntent.launchUrl(context, Uri.parse(authUrl))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F))
+                        ) {
+                            Text(if (isLoggingIn) "⏳ Authenticating..." else "🔐 Login with GitHub", color = Color.White)
+                        }
+
+
+                    } else {
+                        // User Logged In Display
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF24292F),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = githubUser!!.login.take(2).uppercase(),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = githubUser!!.name ?: githubUser!!.login,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "@${githubUser!!.login} • ${githubUser!!.publicRepos} Repositories",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                githubUser!!.bio?.let { bio ->
+                                    if (bio.isNotBlank()) {
+                                        Text(
+                                            text = bio,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.logoutGitHub() },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("Disconnect", fontSize = 11.sp)
+                            }
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                        Text(
+                            text = "ACCESSIBLE REPOSITORIES (${githubRepos.size}):",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        githubRepos.take(15).forEach { repo ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = repo.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    repo.description?.let { desc ->
+                                        Text(
+                                            text = desc,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        text = if (repo.isPrivate) "Private" else "Public",
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
         // Master Resume & Portfolio Credentials
         item {
             Card(
@@ -288,6 +457,7 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                 }
             }
         }
+
     }
 
     if (showEditProfileDialog) {

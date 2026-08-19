@@ -190,6 +190,94 @@ class HelplyViewModel @Inject constructor(
     private val _deployStatus = MutableStateFlow<List<String>>(emptyList())
     val deployStatus: StateFlow<List<String>> = _deployStatus.asStateFlow()
 
+    // ─── GitHub OAuth & Repository State ────────────────
+    private val _githubUser = MutableStateFlow<GitHubAppManager.GitHubUser?>(null)
+    val githubUser: StateFlow<GitHubAppManager.GitHubUser?> = _githubUser.asStateFlow()
+
+    private val _githubRepos = MutableStateFlow<List<GitHubAppManager.GitHubRepo>>(emptyList())
+    val githubRepos: StateFlow<List<GitHubAppManager.GitHubRepo>> = _githubRepos.asStateFlow()
+
+    private val _githubAccessToken = MutableStateFlow<String?>(null)
+    val githubAccessToken: StateFlow<String?> = _githubAccessToken.asStateFlow()
+
+    private val _isLoggingInGithub = MutableStateFlow(false)
+    val isLoggingInGithub: StateFlow<Boolean> = _isLoggingInGithub.asStateFlow()
+
+    init {
+        // Auto-load saved GitHub session or default user
+        viewModelScope.launch {
+            val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
+            val savedToken = prefs.getString("github_access_token", null)
+            val savedUsername = prefs.getString("github_username", "shivarajm8234") ?: "shivarajm8234"
+            
+            val target = if (!savedToken.isNullOrBlank()) savedToken else savedUsername
+            android.util.Log.d("HELPLY_OAUTH", "Auto-loading GitHub session for target: ${target.take(8)}")
+            val user = GitHubAppManager.fetchUserProfile(target)
+            if (user != null) {
+                _githubUser.value = user
+                _githubAccessToken.value = savedToken
+                val repos = GitHubAppManager.fetchUserRepositories(target)
+                _githubRepos.value = repos
+            }
+        }
+    }
+
+    fun connectGitHubAccount(userInput: String = "shivarajm8234") {
+        viewModelScope.launch {
+            _isLoggingInGithub.value = true
+            val target = if (userInput.isBlank()) "shivarajm8234" else userInput.trim()
+            val user = GitHubAppManager.fetchUserProfile(target)
+            if (user != null) {
+                _githubUser.value = user
+                val repos = GitHubAppManager.fetchUserRepositories(target)
+                _githubRepos.value = repos
+                val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
+                prefs.edit().putString("github_username", user.login).apply()
+            }
+            _isLoggingInGithub.value = false
+        }
+    }
+
+    fun handleOAuthCode(code: String) {
+        viewModelScope.launch {
+            android.util.Log.d("HELPLY_OAUTH", "handleOAuthCode called with code: ${code.take(6)}...")
+            _isLoggingInGithub.value = true
+            val token = GitHubAppManager.exchangeCodeForToken(code)
+            android.util.Log.d("HELPLY_OAUTH", "Token exchange result: ${if (token != null) "SUCCESS (${token.take(8)}...)" else "FAILED"}")
+            if (token != null) {
+                _githubAccessToken.value = token
+                val user = GitHubAppManager.fetchUserProfile(token)
+                android.util.Log.d("HELPLY_OAUTH", "User profile: ${user?.login ?: "NULL"}")
+                if (user != null) {
+                    _githubUser.value = user
+                    val repos = GitHubAppManager.fetchUserRepositories(token)
+                    android.util.Log.d("HELPLY_OAUTH", "Repos fetched: ${repos.size}")
+                    _githubRepos.value = repos
+                    
+                    // Persist session
+                    val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("github_access_token", token)
+                        .putString("github_username", user.login)
+                        .apply()
+                }
+            }
+            _isLoggingInGithub.value = false
+        }
+    }
+
+    fun logoutGitHub() {
+        _githubUser.value = null
+        _githubAccessToken.value = null
+        _githubRepos.value = emptyList()
+        _isLoggingInGithub.value = false
+        val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+    }
+
+
+
+
     init {
         // Load memories from Room DB on startup
         viewModelScope.launch {
@@ -489,11 +577,14 @@ class HelplyViewModel @Inject constructor(
             addDeployLog("✅ HTML bundle generated (${html.length} characters)")
             delay(300)
 
-            addDeployLog("🚀 Deploying to GitHub Pages...")
-            delay(500)
-
-            addDeployLog("🌐 Live URL: https://$slug.github.io/portfolio/")
-            addDeployLog("✅ Portfolio deployment completed successfully!")
+            addDeployLog("🚀 Authenticating with GitHub App Private Key...")
+            GitHubAppManager.syncAndDeployPortfolio(
+                portfolioHtml = html,
+                repoName = "portfolio",
+                owner = "shivarajm8234",
+                onLog = { logMsg -> addDeployLog(logMsg) }
+            )
+            addDeployLog("✅ Portfolio deployment pipeline finished successfully!")
         }
     }
 
