@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,7 +18,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
-        manifestPlaceholders["appAuthRedirectScheme"] = "ai.helply.oauth"
+
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -28,7 +30,25 @@ android {
             abiFilters.add("arm64-v8a")
         }
 
-        buildConfigField("String", "DEFAULT_HF_TOKEN", "\"\"")
+        val envFile = rootProject.file(".env")
+        val envProperties = Properties()
+        if (envFile.exists()) {
+            envFile.forEachLine { line ->
+                if (line.contains("=") && !line.startsWith("#")) {
+                    val parts = line.split("=", limit = 2)
+                    val key = parts[0].trim()
+                    val value = parts[1].trim().removeSurrounding("\"")
+                    envProperties.setProperty(key, value)
+                }
+            }
+        }
+        val hfToken = envProperties.getProperty("HF_TOKEN") ?: System.getenv("HF_TOKEN") ?: ""
+        buildConfigField("String", "DEFAULT_HF_TOKEN", "\"$hfToken\"")
+
+        val googleOAuthClientId = envProperties.getProperty("GOOGLE_OAUTH_CLIENT_ID")
+            ?: System.getenv("GOOGLE_OAUTH_CLIENT_ID") ?: ""
+        buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleOAuthClientId\"")
+        manifestPlaceholders["appAuthRedirectScheme"] = "ai.helply.oauth"
     }
 
     buildTypes {
@@ -91,6 +111,7 @@ dependencies {
     // Security & Encryption
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("net.openid:appauth:0.11.1")
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // LiteRT / TFLite
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
@@ -116,4 +137,12 @@ dependencies {
 
     // Chrome Custom Tabs (for OAuth redirect handling)
     implementation("androidx.browser:browser:1.8.0")
+
+    // ─── Email Intelligence (Gmail OAuth via AppAuth + Gmail REST API) ──────────
+    // AppAuth already listed above under Security & Encryption
+
+    // WorkManager with Hilt support (background email polling)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
 }

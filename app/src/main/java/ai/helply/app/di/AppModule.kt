@@ -5,6 +5,11 @@ import ai.helply.app.ai.CloudApiEngine
 import ai.helply.app.ai.GemmaEngineManager
 import ai.helply.app.ai.ModelDownloadManager
 import ai.helply.app.ai.ModelRepository
+import ai.helply.app.core.EmailMonitorManager
+import ai.helply.app.core.LockdownScheduler
+import ai.helply.app.core.NotificationHelper
+import ai.helply.app.data.db.EmailDao
+import ai.helply.app.data.db.ExamDao
 import ai.helply.app.data.db.HelplyDatabase
 import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.AcademicDao
@@ -16,11 +21,15 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+
+    // ─── Room Database ────────────────────────────────────────────────────────
 
     @Provides
     @Singleton
@@ -34,57 +43,64 @@ object AppModule {
             .build()
     }
 
-    @Provides
-    @Singleton
-    fun provideMemoryDao(db: HelplyDatabase): MemoryDao = db.memoryDao()
+    @Provides @Singleton fun provideMemoryDao(db: HelplyDatabase): MemoryDao = db.memoryDao()
+    @Provides @Singleton fun provideAcademicDao(db: HelplyDatabase): AcademicDao = db.academicDao()
+    @Provides @Singleton fun providePlacementDao(db: HelplyDatabase): PlacementDao = db.placementDao()
+    @Provides @Singleton fun provideEmailDao(db: HelplyDatabase): EmailDao = db.emailDao()
+    @Provides @Singleton fun provideExamDao(db: HelplyDatabase): ExamDao = db.examDao()
 
-    @Provides
-    @Singleton
-    fun provideAcademicDao(db: HelplyDatabase): AcademicDao = db.academicDao()
+    // ─── Networking ──────────────────────────────────────────────────────────
 
-    @Provides
-    @Singleton
-    fun providePlacementDao(db: HelplyDatabase): PlacementDao = db.placementDao()
+    @Provides @Singleton
+    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
 
-    @Provides
-    @Singleton
-    fun provideModelRepository(@ApplicationContext context: Context): ModelRepository {
-        return ModelRepository(context)
-    }
+    // ─── Lockdown & Monitoring ────────────────────────────────────────────────
 
-    @Provides
-    @Singleton
+    @Provides @Singleton
+    fun provideLockdownScheduler(
+        @ApplicationContext context: Context,
+        examDao: ExamDao
+    ): LockdownScheduler = LockdownScheduler(context, examDao)
+
+    @Provides @Singleton
+    fun provideEmailMonitorManager(@ApplicationContext context: Context): EmailMonitorManager =
+        EmailMonitorManager(context)
+
+    @Provides @Singleton
+    fun provideNotificationHelper(@ApplicationContext context: Context): NotificationHelper =
+        NotificationHelper(context)
+
+    // ─── AI Infrastructure ────────────────────────────────────────────────────
+
+    @Provides @Singleton
+    fun provideModelRepository(@ApplicationContext context: Context): ModelRepository =
+        ModelRepository(context)
+
+    @Provides @Singleton
     fun provideModelDownloadManager(
         @ApplicationContext context: Context,
         modelRepository: ModelRepository
-    ): ModelDownloadManager {
-        return ModelDownloadManager(context, modelRepository)
-    }
+    ): ModelDownloadManager = ModelDownloadManager(context, modelRepository)
 
-    @Provides
-    @Singleton
+    @Provides @Singleton
     fun provideGemmaEngineManager(
         @ApplicationContext context: Context,
         modelRepository: ModelRepository
-    ): GemmaEngineManager {
-        return GemmaEngineManager(context, modelRepository)
-    }
+    ): GemmaEngineManager = GemmaEngineManager(context, modelRepository)
 
-    @Provides
-    @Singleton
-    fun provideCloudApiEngine(@ApplicationContext context: Context): CloudApiEngine {
-        return CloudApiEngine(context)
-    }
+    @Provides @Singleton
+    fun provideCloudApiEngine(@ApplicationContext context: Context): CloudApiEngine =
+        CloudApiEngine(context)
 
-    @Provides
-    @Singleton
+    @Provides @Singleton
     fun provideToolRegistry(
         db: HelplyDatabase,
         @ApplicationContext context: Context,
         cloudApiEngine: CloudApiEngine,
         gemmaEngine: GemmaEngineManager
-    ): ToolRegistry {
-        return ToolRegistry(db, context, cloudApiEngine, gemmaEngine)
-    }
+    ): ToolRegistry = ToolRegistry(db, context, cloudApiEngine, gemmaEngine)
 }
-
