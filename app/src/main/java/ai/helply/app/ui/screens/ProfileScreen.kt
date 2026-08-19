@@ -38,8 +38,23 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
     var usnNumber by remember { mutableStateOf("Not set") }
     var degreeBranch by remember { mutableStateOf("Not set") }
     var currentCgpa by remember { mutableStateOf("Not set") }
-    var masterResumeName by remember { mutableStateOf("No resume attached") }
     var portfolioUrl by remember { mutableStateOf("Not published") }
+
+    val memories by viewModel.memories.collectAsState()
+    val masterResume = remember(memories) {
+        memories.find { it.type == "Resume" }
+    }
+    val masterResumeName = remember(masterResume) {
+        if (masterResume != null) {
+            val descSnippet = masterResume.description.take(20).trim()
+            "Resume: $descSnippet..."
+        } else {
+            "No resume attached"
+        }
+    }
+
+    var showResumeUploadDialog by remember { mutableStateOf(false) }
+    var resumeInputText by remember { mutableStateOf("") }
 
     var hasUsagePermission by remember { mutableStateOf(AppLockPermissionManager.hasUsageStatsPermission(context)) }
     var hasOverlayPermission by remember { mutableStateOf(AppLockPermissionManager.hasOverlayPermission(context)) }
@@ -56,8 +71,6 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-
-    val memories by viewModel.memories.collectAsState()
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
@@ -295,7 +308,7 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                         // Method 1: Login via GitHub OAuth (Forces account picker)
                         Button(
                             onClick = {
-                                val authUrl = "https://github.com/login/oauth/authorize?client_id=${ai.helply.app.domain.GitHubAppManager.CLIENT_ID}&redirect_uri=helply%3A%2F%2Foauth%2Fcallback&scope=repo%20user&prompt=select_account"
+                                val authUrl = "https://github.com/login/oauth/authorize?client_id=${ai.helply.app.domain.GitHubAppManager.getClientId()}&redirect_uri=helply%3A%2F%2Foauth%2Fcallback&scope=repo%20user&prompt=select_account"
                                 val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
                                     .setShowTitle(true)
                                     .build()
@@ -466,12 +479,18 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text("Master Resume File", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(masterResumeName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         }
-                        Button(onClick = {}, shape = RoundedCornerShape(10.dp)) {
-                            Text("Re-Upload", fontSize = 11.sp)
+                        Button(
+                            onClick = {
+                                resumeInputText = masterResume?.description ?: ""
+                                showResumeUploadDialog = true
+                            },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (masterResume != null) "Edit Resume" else "Upload", fontSize = 11.sp)
                         }
                     }
 
@@ -539,6 +558,47 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showEditProfileDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showResumeUploadDialog) {
+        AlertDialog(
+            onDismissRequest = { showResumeUploadDialog = false },
+            title = { Text("Upload/Edit Master Resume", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Paste your resume details (skills, experience, projects) below. It will be stored in your local Memory Vault securely and sync with the Placements analysis automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = resumeInputText,
+                        onValueChange = { resumeInputText = it },
+                        label = { Text("Resume Content") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.saveMasterResume(resumeInputText)
+                        showResumeUploadDialog = false
+                    },
+                    enabled = resumeInputText.isNotBlank()
+                ) {
+                    Text("Save to Memory Vault")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResumeUploadDialog = false }) {
                     Text("Cancel")
                 }
             }

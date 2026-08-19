@@ -105,7 +105,11 @@ object CompanyIntelligenceEngine {
         )
     )
 
-    fun getCompany360(queryName: String, candidateResumeText: String): CompanyShortlistAnalysis {
+    suspend fun getCompany360(
+        queryName: String, 
+        candidateResumeText: String,
+        aiGenerator: suspend (String, String) -> String
+    ): CompanyShortlistAnalysis {
         val key = queryName.trim().lowercase()
         val profile = companyDatabase[key] ?: CompanyProfile(
             name = if (queryName.isBlank()) "Target Tech Company" else queryName,
@@ -128,27 +132,72 @@ object CompanyIntelligenceEngine {
             )
         )
 
-        // Perform Resume Gap & ATS Shortlist Analysis
-        val resumeLower = candidateResumeText.lowercase()
-        val missingSkills = profile.keyTechStack.filter { !resumeLower.contains(it.lowercase()) }
-        val matchedSkillsCount = profile.keyTechStack.size - missingSkills.size
-        val score = ((matchedSkillsCount.toFloat() / profile.keyTechStack.size) * 100).toInt().coerceIn(60, 98)
+        // Perform dynamic Resume Gap & ATS Shortlist Analysis using LLM
+        val prompt = """
+            You are a Career & Placement Agent.
+            Analyze this candidate resume relative to the company profile.
+            
+            Company Name: ${profile.name}
+            Key Tech Stack Required: ${profile.keyTechStack.joinToString(", ")}
+            Key Selection Criteria: ${profile.keySelectionCriteria.joinToString("; ")}
+            
+            Candidate Resume:
+            $candidateResumeText
+            
+            Evaluate how well the candidate matches the company profile, and return a valid JSON object matching the following structure EXACTLY:
+            {
+              "matchScore": 82,
+              "requiredChanges": ["Bullet point change 1", "Bullet point change 2"],
+              "missingSkills": ["Tech skill 1", "Tech skill 2"],
+              "shortlistStrategy": ["Actionable interview prep step 1", "Actionable interview prep step 2"]
+            }
+            Do not include any thinking tags or markdown wrapper. Output raw JSON only.
+        """.trimIndent()
 
+        val aiResultStr = aiGenerator(prompt, "You are a helpful career agent.")
+
+        val cleanJson = if (aiResultStr.contains("```json")) {
+            aiResultStr.substringAfter("```json").substringBefore("```").trim()
+        } else if (aiResultStr.contains("```")) {
+            aiResultStr.substringAfter("```").substringBefore("```").trim()
+        } else {
+            aiResultStr.trim()
+        }
+
+        var score = 75
         val requiredChanges = mutableListOf<String>()
-        if (missingSkills.isNotEmpty()) {
-            requiredChanges.add("Add missing core technologies: ${missingSkills.joinToString(", ")}")
-        }
-        if (!resumeLower.contains("quantified") && !resumeLower.contains("%") && !resumeLower.contains("ms")) {
-            requiredChanges.add("Quantify project impact metrics (e.g., 'Reduced app latency by 35%', 'Achieved 99.2% test coverage').")
-        }
-        requiredChanges.add("Format resume into single-column ATS-friendly layout without tables or image headers.")
-        requiredChanges.add("Include a dedicated 'System Architecture' or 'Mobile AI' section detailing projects like Helply OS.")
+        val missingSkills = mutableListOf<String>()
+        val strategies = mutableListOf<String>()
 
-        val strategies = listOf(
-            "Highlight your Helply AI Student OS project — explicitly mention LiteRT, Gemma 4 E4B, and SQLCipher.",
-            "Practice ${profile.interviewRounds.firstOrNull()?.substringBefore(":") ?: "Coding Assessment"} problems.",
-            "Prepare 2 STAR-method stories emphasizing how you resolved complex multi-threading or memory bugs."
-        )
+        try {
+            val json = org.json.JSONObject(cleanJson)
+            score = json.optInt("matchScore", 75)
+            
+            val reqArray = json.optJSONArray("requiredChanges")
+            if (reqArray != null) {
+                for (i in 0 until reqArray.length()) requiredChanges.add(reqArray.getString(i))
+            }
+            
+            val misArray = json.optJSONArray("missingSkills")
+            if (misArray != null) {
+                for (i in 0 until misArray.length()) missingSkills.add(misArray.getString(i))
+            }
+            
+            val stratArray = json.optJSONArray("shortlistStrategy")
+            if (stratArray != null) {
+                for (i in 0 until stratArray.length()) strategies.add(stratArray.getString(i))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Fallback heuristics
+            val resumeLower = candidateResumeText.lowercase()
+            val localMissing = profile.keyTechStack.filter { !resumeLower.contains(it.lowercase()) }
+            missingSkills.addAll(localMissing)
+            score = ((profile.keyTechStack.size - localMissing.size).toFloat() / profile.keyTechStack.size * 100).toInt().coerceIn(60, 95)
+            requiredChanges.add("Add missing skills: ${localMissing.joinToString(", ")}")
+            requiredChanges.add("Format resume in a single-column layout.")
+            strategies.add("Review core concepts of ${profile.keyTechStack.take(3).joinToString(", ")}.")
+        }
 
         return CompanyShortlistAnalysis(
             company = profile,

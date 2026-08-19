@@ -31,7 +31,7 @@ import ai.helply.app.ui.HelplyViewModel
 @Composable
 fun SettingsScreen(viewModel: HelplyViewModel) {
     var npuEnabled by remember { mutableStateOf(true) }
-    var gpuDelegateEnabled by remember { mutableStateOf(true) }
+    var gpuDelegateEnabled by remember { mutableStateOf(false) }
     var gmailConnected by remember { mutableStateOf(true) }
     var githubConnected by remember { mutableStateOf(true) }
 
@@ -41,6 +41,20 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
     val downloadStates by viewModel.downloadStates.collectAsState()
     val availableStorageBytes by viewModel.availableStorageBytes.collectAsState()
     val loadedModelId by viewModel.loadedModelId.collectAsState()
+
+    // Cloud API state
+    val inferenceMode by viewModel.inferenceMode.collectAsState()
+    val savedApiKey by viewModel.cloudApiKey.collectAsState()
+    val savedBaseUrl by viewModel.cloudBaseUrl.collectAsState()
+    val savedModelId by viewModel.cloudModelId.collectAsState()
+    val testResult by viewModel.cloudTestResult.collectAsState()
+    val isTesting by viewModel.isTestingConnection.collectAsState()
+
+    var apiKeyInput by remember(savedApiKey) { mutableStateOf(savedApiKey) }
+    var baseUrlInput by remember(savedBaseUrl) { mutableStateOf(savedBaseUrl) }
+    var modelIdInput by remember(savedModelId) { mutableStateOf(savedModelId) }
+    var isApiKeyVisible by remember { mutableStateOf(false) }
+    var isCloudConfigSaved by remember { mutableStateOf(false) }
 
     val availableStorageFormatted = remember(availableStorageBytes) {
         when {
@@ -70,6 +84,239 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
+            }
+        }
+
+        // ─── Inference Mode Toggle ─────────────────────────
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API)
+                        Color(0xFF1E1B4B).copy(alpha = 0.05f) else MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "INFERENCE MODE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Cloud API chip
+                        FilterChip(
+                            selected = inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API,
+                            onClick = { viewModel.setInferenceMode(ai.helply.app.ai.InferenceMode.CLOUD_API) },
+                            label = {
+                                Column {
+                                    Text("☁️ Cloud API", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("OpenAI Compatible", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // On-Device chip
+                        FilterChip(
+                            selected = inferenceMode == ai.helply.app.ai.InferenceMode.ON_DEVICE,
+                            onClick = { viewModel.setInferenceMode(ai.helply.app.ai.InferenceMode.ON_DEVICE) },
+                            label = {
+                                Column {
+                                    Text("📱 On-Device", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("100% Offline", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ─── Cloud API Configuration (shown when Cloud mode selected) ───
+        if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "CLOUD API CONFIGURATION",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Works with OpenAI, Groq, Together AI, OpenRouter, or any OpenAI-compatible endpoint.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Quick provider presets
+                        Text(
+                            text = "QUICK SELECT PROVIDER",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Provider preset chips — 2 rows
+                        ai.helply.app.ai.CloudApiEngine.PROVIDER_PRESETS.chunked(3).forEach { rowPresets ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                rowPresets.forEach { preset ->
+                                    AssistChip(
+                                        onClick = {
+                                            baseUrlInput = preset.baseUrl
+                                            modelIdInput = preset.defaultModel
+                                            isCloudConfigSaved = false
+                                        },
+                                        label = {
+                                            Text(preset.name, fontSize = 11.sp, maxLines = 1)
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                // Fill remaining space if less than 3 items
+                                repeat(3 - rowPresets.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // API Key input
+                        Text("API Key", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = apiKeyInput,
+                                onValueChange = { apiKeyInput = it; isCloudConfigSaved = false },
+                                placeholder = { Text("sk-...") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                visualTransformation = if (isApiKeyVisible)
+                                    androidx.compose.ui.text.input.VisualTransformation.None
+                                else
+                                    androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            OutlinedButton(
+                                onClick = { isApiKeyVisible = !isApiKeyVisible },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (isApiKeyVisible) "Hide" else "Show", fontSize = 12.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Base URL input
+                        Text("Base URL", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = baseUrlInput,
+                            onValueChange = { baseUrlInput = it; isCloudConfigSaved = false },
+                            placeholder = { Text("https://api.openai.com/v1") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Model ID input
+                        Text("Model ID", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = modelIdInput,
+                            onValueChange = { modelIdInput = it; isCloudConfigSaved = false },
+                            placeholder = { Text("gpt-4o-mini") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Action buttons row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.saveCloudConfig(apiKeyInput, baseUrlInput, modelIdInput)
+                                    isCloudConfigSaved = true
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (isCloudConfigSaved) "Saved ✓" else "Save Config")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.saveCloudConfig(apiKeyInput, baseUrlInput, modelIdInput)
+                                    viewModel.testCloudConnection()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isTesting && apiKeyInput.isNotBlank(),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (isTesting) "Testing..." else "Test Connection")
+                            }
+                        }
+
+                        // Test result display
+                        if (testResult != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (testResult!!.startsWith("✅"))
+                                    Color(0xFF15803D).copy(alpha = 0.1f)
+                                else
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = testResult!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(10.dp),
+                                    color = if (testResult!!.startsWith("✅"))
+                                        Color(0xFF15803D) else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -289,6 +536,18 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                             )
                         }
                     }
+
+                    val modelLoadError by viewModel.modelLoadError.collectAsState()
+                    val selectedChatModelId by viewModel.selectedChatModelId.collectAsState()
+                    if (model.id == selectedChatModelId && modelLoadError != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = modelLoadError ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     // Download state UI
                     else when (downloadState) {
                         is ModelDownloadManager.DownloadState.Downloading -> {
@@ -455,7 +714,10 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                         }
                         Switch(
                             checked = npuEnabled,
-                            onCheckedChange = { npuEnabled = it }
+                            onCheckedChange = {
+                                npuEnabled = it
+                                viewModel.setHardwareAcceleration(npu = it, gpu = gpuDelegateEnabled)
+                            }
                         )
                     }
 
@@ -480,7 +742,10 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                         }
                         Switch(
                             checked = gpuDelegateEnabled,
-                            onCheckedChange = { gpuDelegateEnabled = it }
+                            onCheckedChange = {
+                                gpuDelegateEnabled = it
+                                viewModel.setHardwareAcceleration(npu = npuEnabled, gpu = it)
+                            }
                         )
                     }
                 }
@@ -523,6 +788,84 @@ fun SettingsScreen(viewModel: HelplyViewModel) {
                     ) {
                         Text("GitHub OAuth Sync (Portfolio Deploy)", fontWeight = FontWeight.SemiBold)
                         Switch(checked = githubConnected, onCheckedChange = { githubConnected = it })
+                    }
+
+                    if (githubConnected) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val customClientId by viewModel.githubClientId.collectAsState()
+                        val customClientSecret by viewModel.githubClientSecret.collectAsState()
+
+                        var clientIdInput by remember(customClientId) { mutableStateOf(customClientId) }
+                        var clientSecretInput by remember(customClientSecret) { mutableStateOf(customClientSecret) }
+                        var isSecretVisible by remember { mutableStateOf(false) }
+                        var isSaved by remember { mutableStateOf(false) }
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = "🔒 CUSTOM GITHUB OAUTH CREDENTIALS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Configure custom credentials to avoid pushing credentials to version control. Set Authorization Callback URL in your GitHub settings to 'helply://oauth/callback'. Defaults will be used if left blank.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                            
+                            OutlinedTextField(
+                                value = clientIdInput,
+                                onValueChange = { clientIdInput = it; isSaved = false },
+                                label = { Text("Client ID", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = clientSecretInput,
+                                    onValueChange = { clientSecretInput = it; isSaved = false },
+                                    label = { Text("Client Secret", fontSize = 11.sp) },
+                                    singleLine = true,
+                                    visualTransformation = if (isSecretVisible)
+                                        androidx.compose.ui.text.input.VisualTransformation.None
+                                    else
+                                        androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                OutlinedButton(
+                                    onClick = { isSecretVisible = !isSecretVisible },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (isSecretVisible) "Hide" else "Show", fontSize = 11.sp)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.saveGitHubConfig(clientIdInput, clientSecretInput)
+                                    isSaved = true
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text(if (isSaved) "Saved ✓" else "Save Credentials", fontSize = 11.sp)
+                            }
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))

@@ -32,6 +32,8 @@ fun ChatbotScreen(viewModel: HelplyViewModel) {
     val selectedModelId by viewModel.selectedChatModelId.collectAsState()
     val installedModelIds by viewModel.installedModelIds.collectAsState()
     val loadedModelId by viewModel.loadedModelId.collectAsState()
+    val inferenceMode by viewModel.inferenceMode.collectAsState()
+    val cloudModelId by viewModel.cloudModelId.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -49,68 +51,106 @@ fun ChatbotScreen(viewModel: HelplyViewModel) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Model Selection Bar
+        // Mode Badge + Model Selection Bar
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "SELECT ON-DEVICE AI MODEL",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
-
+                // Inference Mode indicator
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ModelRegistry.ALL_MODELS.forEach { model ->
-                        val isSelected = (model.id == selectedModelId)
-                        val isInstalled = installedModelIds.contains(model.id)
-                        val isLoaded = (loadedModelId == model.id)
+                    Text(
+                        text = if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API)
+                            "CLOUD API MODE" else "ON-DEVICE MODE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                viewModel.selectChatModel(model.id)
-                            },
-                            label = {
-                                Column {
-                                    Text(
-                                        text = model.name,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                    Text(
-                                        text = when {
-                                            isLoaded -> "Active RAM"
-                                            isInstalled -> "Installed"
-                                            else -> "Not Installed"
-                                        },
-                                        fontSize = 9.sp,
-                                        color = when {
-                                            isLoaded -> Color(0xFF15803D)
-                                            isInstalled -> Color(0xFF1D4ED8)
-                                            else -> MaterialTheme.colorScheme.error
-                                        }
-                                    )
-                                }
-                            },
-                            leadingIcon = {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp)
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API)
+                            Color(0xFF4F46E5).copy(alpha = 0.15f)
+                        else
+                            Color(0xFF15803D).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API)
+                                "☁️ $cloudModelId" else "📱 On-Device",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (inferenceMode == ai.helply.app.ai.InferenceMode.CLOUD_API)
+                                Color(0xFF4F46E5) else Color(0xFF15803D),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
+                    }
+                }
+
+                // Only show on-device model selector chips in ON_DEVICE mode
+                if (inferenceMode == ai.helply.app.ai.InferenceMode.ON_DEVICE) {
+                    Text(
+                        text = "SELECT ON-DEVICE AI MODEL",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ModelRegistry.ALL_MODELS.forEach { model ->
+                            val isSelected = (model.id == selectedModelId)
+                            val isInstalled = installedModelIds.contains(model.id)
+                            val isLoaded = (loadedModelId == model.id)
+
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    viewModel.selectChatModel(model.id)
+                                },
+                                label = {
+                                    Column {
+                                        Text(
+                                            text = model.name,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Text(
+                                            text = when {
+                                                isLoaded -> "Active RAM"
+                                                isInstalled -> "Installed"
+                                                else -> "Not Installed"
+                                            },
+                                            fontSize = 9.sp,
+                                            color = when {
+                                                isLoaded -> Color(0xFF15803D)
+                                                isInstalled -> Color(0xFF1D4ED8)
+                                                else -> MaterialTheme.colorScheme.error
+                                            }
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
                     }
                 }
             }

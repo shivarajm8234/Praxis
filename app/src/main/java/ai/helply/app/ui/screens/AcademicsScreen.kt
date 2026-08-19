@@ -320,10 +320,21 @@ fun AcademicsScreen(viewModel: HelplyViewModel) {
 
                     Button(
                         onClick = { viewModel.scanCollegeEmails() },
+                        enabled = !isAgentRunning,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Scan College Circulars & Trigger Lockdown")
+                        if (isAgentRunning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Scanning circulars...")
+                        } else {
+                            Text("Scan College Circulars & Trigger Lockdown")
+                        }
                     }
 
                     emailScanSummary?.let { summary ->

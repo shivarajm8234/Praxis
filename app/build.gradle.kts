@@ -99,6 +99,7 @@ dependencies {
 
     // MediaPipe GenAI - On-Device LLM Inference Engine
     implementation("com.google.mediapipe:tasks-genai:0.10.22")
+    implementation("com.google.mediapipe:solution-core:0.10.20")
 
     // Kotlinx Serialization & Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")

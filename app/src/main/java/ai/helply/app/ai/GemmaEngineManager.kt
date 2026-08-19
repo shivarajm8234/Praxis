@@ -1,6 +1,7 @@
 package ai.helply.app.ai
 
 import android.content.Context
+import android.widget.Toast
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 import kotlinx.coroutines.Dispatchers
@@ -64,56 +65,164 @@ class GemmaEngineManager @Inject constructor(
             val modelConfig = ModelRegistry.getById(modelId) ?: ModelRegistry.GEMMA_2B_IT
             val modelFile = modelRepository.getModelFile(modelConfig.id)
 
-            if (modelFile == null || !modelFile.exists() || modelFile.length() == 0L) {
-                android.util.Log.w("HelplyInference", "Model file not present on disk for ${modelConfig.id}.")
+            android.util.Log.d("HelplyInference", "═══════════════════════════════════════════════")
+            android.util.Log.d("HelplyInference", "Model Load Request: '${modelConfig.name}' (${modelConfig.id})")
+            android.util.Log.d("HelplyInference", "  Config fileName: ${modelConfig.fileName}")
+            android.util.Log.d("HelplyInference", "  Resolved file:   ${modelFile?.absolutePath ?: "NULL"}")
+            android.util.Log.d("HelplyInference", "  File exists:     ${modelFile?.exists()}")
+            android.util.Log.d("HelplyInference", "  File size:       ${modelFile?.length()?.let { "${it / 1024 / 1024} MB ($it bytes)" } ?: "N/A"}")
+            android.util.Log.d("HelplyInference", "  GPU setting:     $isGpuDelegateEnabled")
+            android.util.Log.d("HelplyInference", "═══════════════════════════════════════════════")
+
+            if (modelFile == null || !modelFile.exists()) {
+                val errorMsg = "Model file not found for '${modelConfig.name}'. Please download it first."
+                android.util.Log.e("HelplyInference", "❌ $errorMsg")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                }
+                isModelLoaded = false
+                loadedModelId = null
+                return@withContext false
+            }
+
+            if (modelFile.length() < 10 * 1024 * 1024L) {
+                val errorMsg = "Model file corrupt (${modelFile.length()} bytes). Please re-download."
+                android.util.Log.e("HelplyInference", "❌ $errorMsg")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                }
                 isModelLoaded = false
                 loadedModelId = null
                 return@withContext false
             }
 
             onProgress(0.3f)
-            android.util.Log.d("HelplyInference", "Loading MediaPipe model weights: ${modelFile.absolutePath} (${modelFile.length() / 1024 / 1024} MB)")
 
-            // Stage 1: Try requested backend (GPU or CPU)
-            val primaryBackend = if (isGpuDelegateEnabled) LlmInference.Backend.GPU else LlmInference.Backend.CPU
+            // Determine if this model file is GPU-quantized based on its filename
+            val isGpuQuantizedFile = modelFile.name.contains("gpu", ignoreCase = true)
+
+            // Build the list of backends to try, in order
+            val backendsToTry = mutableListOf<LlmInference.Backend>()
+
+            if (isGpuQuantizedFile) {
+                // GPU-quantized model: try GPU first, then CPU as desperate fallback
+                backendsToTry.add(LlmInference.Backend.GPU)
+                backendsToTry.add(LlmInference.Backend.CPU)
+            } else if (isGpuDelegateEnabled) {
+                // CPU model with GPU setting enabled: try GPU first, then CPU
+                backendsToTry.add(LlmInference.Backend.GPU)
+                backendsToTry.add(LlmInference.Backend.CPU)
+            } else {
+                // CPU model, GPU not enabled: CPU only
+                backendsToTry.add(LlmInference.Backend.CPU)
+            }
+
+            android.util.Log.d("HelplyInference", "Backend strategy: ${backendsToTry.joinToString(" → ")}")
+
             var engine: LlmInference? = null
+            var lastError: Throwable? = null
 
-            try {
-                val options = LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath(modelFile.absolutePath)
-                    .setMaxTokens(1024)
-                    .setMaxTopK(40)
-                    .setPreferredBackend(primaryBackend)
-                    .build()
+            for (backend in backendsToTry) {
+                try {
+                    android.util.Log.d("HelplyInference", "⏳ Attempting $backend backend for ${modelFile.name}...")
+                    val options = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelFile.absolutePath)
+                        .setMaxTokens(1024)
+                        .setMaxTopK(40)
+                        .setPreferredBackend(backend)
+                        .build()
 
-                engine = LlmInference.createFromOptions(context, options)
-                android.util.Log.d("HelplyInference", "✅ Successfully initialized MediaPipe with $primaryBackend backend")
-            } catch (gpuError: Exception) {
-                android.util.Log.w("HelplyInference", "⚠️ GPU backend failed (${gpuError.message}). Falling back to CPU multithreaded backend...")
+                    onProgress(0.5f)
+                    engine = LlmInference.createFromOptions(context, options)
+                    android.util.Log.d("HelplyInference", "✅ SUCCESS: ${modelConfig.name} loaded on $backend backend")
+                    lastError = null
+                    break // Success — stop trying
+                } catch (e: Throwable) {
+                    lastError = e
+                    val isOpenClMissing = e.message?.contains("OpenCL", ignoreCase = true) == true ||
+                                         e.message?.contains("libvndksupport", ignoreCase = true) == true
+                    val isXnnpackError = e.message?.contains("XnnLlmResource", ignoreCase = true) == true ||
+                                        e.message?.contains("RET_CHECK", ignoreCase = true) == true
 
-                // Stage 2: Fallback to CPU backend (guaranteed to work on all ARM64 / x86 Android devices)
-                val cpuOptions = LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath(modelFile.absolutePath)
-                    .setMaxTokens(1024)
-                    .setMaxTopK(40)
-                    .setPreferredBackend(LlmInference.Backend.CPU)
-                    .build()
+                    when {
+                        isOpenClMissing -> android.util.Log.w("HelplyInference", "⚠️ $backend failed: Device lacks OpenCL GPU support")
+                        isXnnpackError -> android.util.Log.w("HelplyInference", "⚠️ $backend failed: Model format incompatible with CPU/XNNPACK")
+                        else -> android.util.Log.w("HelplyInference", "⚠️ $backend failed: ${e.message}")
+                    }
+                }
+            }
 
-                engine = LlmInference.createFromOptions(context, cpuOptions)
-                android.util.Log.d("HelplyInference", "✅ Successfully initialized MediaPipe with CPU fallback backend")
+            // If all backends for this file failed AND it was a GPU-quantized file,
+            // try to find a CPU model file on disk as automatic fallback
+            if (engine == null && isGpuQuantizedFile) {
+                android.util.Log.w("HelplyInference", "GPU model failed on all backends. Searching for CPU model fallback...")
+
+                val cpuFallbackConfig = ModelRegistry.GEMMA_4_E2B_IT
+                val cpuFallbackFile = modelRepository.getModelFile(cpuFallbackConfig.id)
+
+                if (cpuFallbackFile != null && cpuFallbackFile.exists() && cpuFallbackFile.length() >= 10 * 1024 * 1024L) {
+                    android.util.Log.d("HelplyInference", "Found CPU fallback: ${cpuFallbackFile.absolutePath} (${cpuFallbackFile.length() / 1024 / 1024} MB)")
+                    try {
+                        val cpuOptions = LlmInference.LlmInferenceOptions.builder()
+                            .setModelPath(cpuFallbackFile.absolutePath)
+                            .setMaxTokens(1024)
+                            .setMaxTopK(40)
+                            .setPreferredBackend(LlmInference.Backend.CPU)
+                            .build()
+
+                        onProgress(0.7f)
+                        engine = LlmInference.createFromOptions(context, cpuOptions)
+                        android.util.Log.d("HelplyInference", "✅ SUCCESS: Loaded CPU fallback '${cpuFallbackConfig.name}' instead of GPU model")
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context,
+                                "GPU not supported on this device. Loaded CPU model instead.",
+                                Toast.LENGTH_LONG).show()
+                        }
+                        lastError = null
+                    } catch (fallbackError: Throwable) {
+                        android.util.Log.e("HelplyInference", "❌ CPU fallback also failed: ${fallbackError.message}", fallbackError)
+                        lastError = fallbackError
+                    }
+                } else {
+                    android.util.Log.w("HelplyInference", "No CPU model available for fallback. Download '${cpuFallbackConfig.name}' for device compatibility.")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context,
+                            "GPU not supported. Please download '${cpuFallbackConfig.name}' (CPU) instead.",
+                            Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+
+            if (engine == null) {
+                throw lastError ?: IllegalStateException("Failed to load model on any backend")
             }
 
             llmInference = engine
             onProgress(0.9f)
-            isModelLoaded = (engine != null)
-            loadedModelId = if (isModelLoaded) modelId else null
+            isModelLoaded = true
+            loadedModelId = modelId
 
-            android.util.Log.d("HelplyInference", "✅ Model '${modelConfig.name}' active and running on-device.")
+            android.util.Log.d("HelplyInference", "✅ Model ready for inference on-device.")
             onProgress(1.0f)
-            return@withContext isModelLoaded
+            return@withContext true
 
-        } catch (e: Exception) {
-            android.util.Log.e("HelplyInference", "⚠️ MediaPipe model load warning: ${e.message}", e)
+        } catch (e: Throwable) {
+            val shortMsg = e.message?.take(120) ?: "Unknown error"
+            val userMsg = when {
+                shortMsg.contains("OpenCL", ignoreCase = true) ->
+                    "GPU not supported on this device. Use a CPU model instead."
+                shortMsg.contains("XnnLlmResource", ignoreCase = true) || shortMsg.contains("RET_CHECK", ignoreCase = true) ->
+                    "Model format incompatible with this device's CPU. Try a different model."
+                else ->
+                    "Model load failed: $shortMsg"
+            }
+            android.util.Log.e("HelplyInference", "FATAL: $userMsg", e)
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, userMsg, Toast.LENGTH_LONG).show()
+            }
+
             llmInference = null
             isModelLoaded = false
             loadedModelId = null
@@ -179,6 +288,18 @@ class GemmaEngineManager @Inject constructor(
         // Model not loaded on device
         emit("⚠️ Model '${activeConfig.name}' is not loaded in RAM. Please navigate to AI Model Settings and tap 'Download Model' to enable real 100% offline Gemma AI inference.")
     }.flowOn(Dispatchers.IO)
+
+    suspend fun generateResponse(
+        prompt: String,
+        systemPrompt: String = "You are an intelligent on-device AI assistant inside Helply Student OS.",
+        modelId: String = ModelRegistry.GEMMA_2B_IT.id
+    ): String = withContext(Dispatchers.IO) {
+        val result = StringBuilder()
+        generateStreamingResponse(prompt, systemPrompt, modelId).collect { chunk ->
+            result.append(chunk)
+        }
+        result.toString()
+    }
 
     private fun generateOnDeviceLlmTokens(prompt: String, modelName: String): List<String> {
         val cleanPrompt = prompt.trim()
