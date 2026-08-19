@@ -19,6 +19,8 @@ import java.security.PrivateKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.RSAPrivateCrtKeySpec
 import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Enterprise GitHub App & User OAuth Integration Engine.
@@ -39,8 +41,22 @@ object GitHubAppManager {
         .build()
 
     const val PEM_KEY_PATH = "/home/satoru/Desktop/Projects/Helply/helply-portfolio.2026-08-19.private-key.pem"
-    const val CLIENT_ID = "Iv23lirAI9bA1apWdRaq"
-    const val CLIENT_SECRET = "c67fd0f1de2b581ba0905d837a3947cadec747a6"
+    private const val DEFAULT_CLIENT_ID = "Iv23lirAI9bA1apWdRaq"
+    private const val DEFAULT_CLIENT_SECRET = "c67fd0f1de2b581ba0905d837a3947cadec747a6"
+
+    @Volatile
+    var customClientId: String? = null
+    @Volatile
+    var customClientSecret: String? = null
+
+    fun getClientId(): String {
+        return customClientId?.takeIf { it.isNotBlank() } ?: DEFAULT_CLIENT_ID
+    }
+
+    fun getClientSecret(): String {
+        return customClientSecret?.takeIf { it.isNotBlank() } ?: DEFAULT_CLIENT_SECRET
+    }
+
     const val APP_NAME = "Helply-Portfolio"
     const val DEFAULT_OWNER = "shivarajm8234"
 
@@ -100,8 +116,8 @@ object GitHubAppManager {
     suspend fun exchangeCodeForToken(code: String): String? = withContext(Dispatchers.IO) {
         try {
             val formBody = FormBody.Builder()
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
+                .add("client_id", getClientId())
+                .add("client_secret", getClientSecret())
                 .add("code", code)
                 .add("redirect_uri", "helply://oauth/callback")
                 .build()
@@ -259,6 +275,127 @@ object GitHubAppManager {
     }
 
     /**
+     * Creates a new GitHub repository for the authenticated user.
+     */
+    suspend fun createRepository(token: String, repoName: String, description: String, isPrivate: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val json = JSONObject().apply {
+                put("name", repoName)
+                put("description", description)
+                put("private", isPrivate)
+                put("auto_init", true)
+            }
+            val request = Request.Builder()
+                .url("$GITHUB_API_URL/user/repos")
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "HelplyApp/1.0")
+                .header("Accept", "application/json")
+                .post(json.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                android.util.Log.d("HELPLY_GITHUB", "createRepository response: ${response.code}")
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Creates or updates a file in a given repository.
+     */
+    suspend fun createOrUpdateFile(
+        token: String,
+        owner: String,
+        repoName: String,
+        path: String,
+        content: String,
+        commitMessage: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Step 1: Get SHA of the file if it exists
+            val fileUrl = "$GITHUB_API_URL/repos/$owner/$repoName/contents/$path"
+            var sha: String? = null
+
+            val getRequest = Request.Builder()
+                .url(fileUrl)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "HelplyApp/1.0")
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(getRequest).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        sha = JSONObject(body).optString("sha", null)
+                    }
+                }
+            }
+
+            // Step 2: Write/Update the file
+            val base64Content = Base64.encodeToString(content.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+            val json = JSONObject().apply {
+                put("message", commitMessage)
+                put("content", base64Content)
+                if (sha != null) {
+                    put("sha", sha)
+                }
+            }
+
+            val putRequest = Request.Builder()
+                .url(fileUrl)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "HelplyApp/1.0")
+                .header("Accept", "application/json")
+                .put(json.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(putRequest).execute().use { response ->
+                android.util.Log.d("HELPLY_GITHUB", "createOrUpdateFile status: ${response.code}")
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Gets file contents from GitHub.
+     */
+    suspend fun getFileContent(
+        token: String,
+        owner: String,
+        repoName: String,
+        path: String
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val fileUrl = "$GITHUB_API_URL/repos/$owner/$repoName/contents/$path"
+            val request = Request.Builder()
+                .url(fileUrl)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", "HelplyApp/1.0")
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val json = JSONObject(body)
+                val base64 = json.getString("content").replace("\n", "")
+                val decodedBytes = Base64.decode(base64, Base64.DEFAULT)
+                String(decodedBytes, StandardCharsets.UTF_8)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
      * Performs automated GitHub Pages Portfolio deployment.
      */
     suspend fun syncAndDeployPortfolio(
@@ -269,27 +406,61 @@ object GitHubAppManager {
         onLog: (String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            onLog("🔐 Authenticating with GitHub App Credentials...")
-
-            val key = loadPrivateKey()
-            if (key != null) {
-                onLog("🔑 Verified RSA Private Key (.pem)")
+            onLog("🔐 Authenticating with GitHub User Credentials...")
+            if (userToken.isNullOrBlank()) {
+                onLog("❌ Authentication failed: GitHub Token not found. Go to Profile to connect your account.")
+                return@withContext false
             }
 
-            if (!userToken.isNullOrBlank()) {
-                onLog("👤 Active User Access Token: Connected to @$owner")
+            onLog("👤 Connected to user @$owner")
+            onLog("📦 Checking if repository '$repoName' exists...")
+
+            // Check if repo exists by attempting to fetch it
+            val checkRequest = Request.Builder()
+                .url("$GITHUB_API_URL/repos/$owner/$repoName")
+                .header("Authorization", "Bearer $userToken")
+                .header("User-Agent", "HelplyApp/1.0")
+                .header("Accept", "application/json")
+                .build()
+
+            var repoExists = false
+            client.newCall(checkRequest).execute().use { response ->
+                repoExists = response.isSuccessful
+            }
+
+            if (!repoExists) {
+                onLog("➕ Creating repository '$repoName'...")
+                val success = createRepository(userToken, repoName, "Academic Portfolio auto-generated by Helply OS", isPrivate = false)
+                if (!success) {
+                    onLog("❌ Failed to create repository '$repoName'")
+                    return@withContext false
+                }
+                onLog("✅ Created repository successfully.")
+                // Give GitHub API a moment to register the new repo
+                delay(1500)
             } else {
-                onLog("🤖 App Token: Connected to GitHub App @$APP_NAME")
+                onLog("✅ Repository '$repoName' already exists.")
             }
 
-            onLog("📦 Accessing Repository: $owner/$repoName")
-            delay(300)
-            onLog("📄 Created/Updated 'index.html' commit in $owner/$repoName")
-            delay(300)
-            onLog("🚀 Triggered GitHub Pages Deployment Worker")
-            onLog("✨ Live Site: https://$owner.github.io/$repoName/")
+            onLog("📄 Committing 'index.html' to repository...")
+            val commitSuccess = createOrUpdateFile(
+                token = userToken,
+                owner = owner,
+                repoName = repoName,
+                path = "index.html",
+                content = portfolioHtml,
+                commitMessage = "Update portfolio website by Helply AI Student OS"
+            )
 
-            true
+            if (commitSuccess) {
+                onLog("✅ File 'index.html' committed successfully!")
+                onLog("🚀 Triggered GitHub Pages deployment...")
+                onLog("✨ Live Site: https://$owner.github.io/$repoName/")
+                true
+            } else {
+                onLog("❌ Failed to commit portfolio file.")
+                false
+            }
         } catch (e: Exception) {
             onLog("❌ Deployment error: ${e.localizedMessage}")
             false

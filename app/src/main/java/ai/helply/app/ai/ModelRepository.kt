@@ -59,7 +59,34 @@ class ModelRepository @Inject constructor(
     /** Full path to the model file on disk */
     fun getModelFile(modelId: String): File? {
         val config = ModelRegistry.getById(modelId) ?: return null
-        return File(getModelDir(modelId), config.fileName)
+        
+        // 1. Try files/models/<modelId>/<config.fileName>
+        val nestedFile = File(getModelDir(modelId), config.fileName)
+        if (nestedFile.exists() && nestedFile.length() >= 10 * 1024 * 1024L) {
+            return nestedFile
+        }
+        
+        // 2. Try files/models/<config.fileName>
+        val directFile = File(getModelsDir(), config.fileName)
+        if (directFile.exists() && directFile.length() >= 10 * 1024 * 1024L) {
+            return directFile
+        }
+        
+        // 3. Try fallback filenames directly in files/models/
+        val fallbackFileName = when (modelId) {
+            "gemma-4b-it" -> "gemma-4-e4b.litertlm"
+            "gemma-4-e2b-it" -> "gemma-4-E2B-it-gpu.litertlm"
+            else -> null
+        }
+        if (fallbackFileName != null) {
+            val fallbackFile = File(getModelsDir(), fallbackFileName)
+            if (fallbackFile.exists() && fallbackFile.length() >= 10 * 1024 * 1024L) {
+                return fallbackFile
+            }
+        }
+        
+        // Return null if no existing model file found
+        return null
     }
 
     /** Path to the temporary download file */
@@ -71,20 +98,24 @@ class ModelRepository @Inject constructor(
     /**
      * Checks if a model is fully installed by verifying both:
      * 1. The SharedPreferences flag is set
-     * 2. The actual model file exists on disk
+     * 2. The actual model file exists on disk and is approximately the expected size
      */
     fun isModelInstalled(modelId: String): Boolean {
+        val config = ModelRegistry.getById(modelId) ?: return false
         val modelFile = getModelFile(modelId) ?: return false
-        if (!modelFile.exists() || modelFile.length() == 0L) {
+        
+        // Check if file exists and is at least 90% of expected size to account for minor variation
+        val minSize = config.sizeBytes * 0.9
+        if (!modelFile.exists() || modelFile.length() < minSize) {
+            if (modelFile.exists()) {
+                android.util.Log.w("ModelRepository", "Model file found but size is incorrect: ${modelFile.length()} vs ${config.sizeBytes}")
+            }
             removeModelRecord(modelId)
             return false
         }
+        
         val prefInstalled = prefs.getBoolean("${KEY_PREFIX_INSTALLED}$modelId", false)
-        if (!prefInstalled) {
-            // Auto-detect & register model file present on disk
-            markModelInstalled(modelId, modelFile.absolutePath, verified = true)
-        }
-        return true
+        return prefInstalled
     }
 
     /** Returns true if the model file passed SHA-256 verification */

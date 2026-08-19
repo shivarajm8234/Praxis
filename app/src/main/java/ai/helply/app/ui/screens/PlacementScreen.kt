@@ -23,9 +23,22 @@ import ai.helply.app.ui.HelplyViewModel
 @Composable
 fun PlacementScreen(viewModel: HelplyViewModel) {
     var companyName by remember { mutableStateOf("") }
+    
+    val memories by viewModel.memories.collectAsState()
+    val masterResume = remember(memories) {
+        memories.find { it.type == "Resume" }
+    }
+    
     var candidateResumeText by remember { mutableStateOf("") }
 
+    LaunchedEffect(masterResume) {
+        if (masterResume != null) {
+            candidateResumeText = masterResume.description
+        }
+    }
+
     val companyAnalysis by viewModel.companyAnalysis.collectAsState()
+    val isAnalyzing by viewModel.isAgentRunning.collectAsState()
 
     val quickCompanies = listOf("TechCorp", "Google", "Amazon", "Goldman Sachs")
 
@@ -99,13 +112,28 @@ fun PlacementScreen(viewModel: HelplyViewModel) {
 
                     Spacer(modifier = Modifier.height(10.dp))
 
+                    if (masterResume == null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            Text(
+                                text = "⚠️ No Master Resume found in Memory Vault. Paste content below or upload on the Profile tab to save it permanently.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = candidateResumeText,
                         onValueChange = { candidateResumeText = it },
-                        label = { Text("Pre-Uploaded Resume Summary") },
+                        label = { Text("Active Resume Content (Loaded from Memory Vault)") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(80.dp),
+                            .height(140.dp),
                         shape = RoundedCornerShape(12.dp)
                     )
 
@@ -113,13 +141,27 @@ fun PlacementScreen(viewModel: HelplyViewModel) {
 
                     Button(
                         onClick = {
+                            if (candidateResumeText.isNotBlank() && (masterResume == null || masterResume.description != candidateResumeText)) {
+                                viewModel.saveMasterResume(candidateResumeText)
+                            }
                             viewModel.analyzeCompanyShortlist(companyName, candidateResumeText)
                         },
+                        enabled = !isAnalyzing && companyName.isNotBlank() && candidateResumeText.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
                     ) {
-                        Text("Analyze Company 360° & Get Shortlist Advice", fontSize = 13.sp)
+                        if (isAnalyzing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Analyzing Resume Gap...")
+                        } else {
+                            Text("Analyze Company 360° & Get Shortlist Advice", fontSize = 13.sp)
+                        }
                     }
                 }
             }

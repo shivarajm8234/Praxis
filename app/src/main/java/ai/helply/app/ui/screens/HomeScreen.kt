@@ -59,8 +59,22 @@ fun HomeScreen(navController: NavController, viewModel: HelplyViewModel) {
     var newNoteTitle by remember { mutableStateOf("") }
     var newNoteContent by remember { mutableStateOf("") }
 
-    var notesList by remember {
-        mutableStateOf(emptyList<NotepadNote>())
+    val memories by viewModel.memories.collectAsState()
+    val notesList = remember(memories) {
+        memories.filter { it.type == "Note" || it.source == "Notepad Interface" || it.source == "Manual User Entry" }.map { entity ->
+            NotepadNote(
+                id = entity.id,
+                title = entity.title,
+                contentSnippet = if (entity.description.length > 50) entity.description.take(50) + "..." else entity.description,
+                fullContent = entity.description,
+                timestamp = "Saved Note",
+                isPinned = false,
+                tileBgColor = Color(0xFFEFF6FF),
+                iconColor = Color(0xFF3B82F6),
+                assignedAgent = "AcademicAgent",
+                defaultToolCall = "createTask(title=\"${entity.title}\", subject=\"General\", deadlineDays=3)"
+            )
+        }
     }
 
     val filteredNotes = notesList.filter {
@@ -442,19 +456,6 @@ fun HomeScreen(navController: NavController, viewModel: HelplyViewModel) {
                 Button(
                     onClick = {
                         if (newNoteTitle.isNotBlank()) {
-                            val newNote = NotepadNote(
-                                id = System.currentTimeMillis().toString(),
-                                title = newNoteTitle,
-                                contentSnippet = if (newNoteContent.length > 50) newNoteContent.take(50) + "..." else newNoteContent,
-                                fullContent = newNoteContent,
-                                timestamp = "Just Now",
-                                isPinned = false,
-                                tileBgColor = Color(0xFFEFF6FF),
-                                iconColor = Color(0xFF3B82F6),
-                                assignedAgent = "AcademicAgent",
-                                defaultToolCall = "createTask(title='$newNoteTitle', subject='General', deadlineDays=3)"
-                            )
-                            notesList = listOf(newNote) + notesList
                             viewModel.addMemory(
                                 title = newNoteTitle,
                                 type = "Note",

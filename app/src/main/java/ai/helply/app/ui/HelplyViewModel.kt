@@ -3,7 +3,9 @@ package ai.helply.app.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ai.helply.app.ai.CloudApiEngine
 import ai.helply.app.ai.GemmaEngineManager
+import ai.helply.app.ai.InferenceMode
 import ai.helply.app.core.AppLockEnforcer
 import ai.helply.app.core.NotificationHelper
 import ai.helply.app.data.db.AcademicDao
@@ -44,6 +46,7 @@ data class ChatMessage(
 class HelplyViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gemmaEngine: GemmaEngineManager,
+    val cloudApiEngine: CloudApiEngine,
     val modelRepository: ModelRepository,
     val modelDownloadManager: ModelDownloadManager,
     private val toolRegistry: ToolRegistry,
@@ -51,6 +54,47 @@ class HelplyViewModel @Inject constructor(
     private val academicDao: AcademicDao,
     private val placementDao: PlacementDao
 ) : ViewModel() {
+
+    // ─── Inference Mode State ────────────────────────────
+    private val _inferenceMode = MutableStateFlow(cloudApiEngine.getInferenceMode())
+    val inferenceMode: StateFlow<InferenceMode> = _inferenceMode.asStateFlow()
+
+    private val _cloudApiKey = MutableStateFlow(cloudApiEngine.getApiKey())
+    val cloudApiKey: StateFlow<String> = _cloudApiKey.asStateFlow()
+
+    private val _cloudBaseUrl = MutableStateFlow(cloudApiEngine.getBaseUrl())
+    val cloudBaseUrl: StateFlow<String> = _cloudBaseUrl.asStateFlow()
+
+    private val _cloudModelId = MutableStateFlow(cloudApiEngine.getModelId())
+    val cloudModelId: StateFlow<String> = _cloudModelId.asStateFlow()
+
+    private val _cloudTestResult = MutableStateFlow<String?>(null)
+    val cloudTestResult: StateFlow<String?> = _cloudTestResult.asStateFlow()
+
+    private val _isTestingConnection = MutableStateFlow(false)
+    val isTestingConnection: StateFlow<Boolean> = _isTestingConnection.asStateFlow()
+
+    fun setInferenceMode(mode: InferenceMode) {
+        _inferenceMode.value = mode
+        cloudApiEngine.saveInferenceMode(mode)
+    }
+
+    fun saveCloudConfig(apiKey: String, baseUrl: String, modelId: String) {
+        cloudApiEngine.saveConfig(apiKey, baseUrl, modelId)
+        _cloudApiKey.value = apiKey.trim()
+        _cloudBaseUrl.value = baseUrl.trim().trimEnd('/')
+        _cloudModelId.value = modelId.trim()
+    }
+
+    fun testCloudConnection() {
+        viewModelScope.launch {
+            _isTestingConnection.value = true
+            _cloudTestResult.value = "Testing..."
+            val (success, message) = cloudApiEngine.testConnection()
+            _cloudTestResult.value = message
+            _isTestingConnection.value = false
+        }
+    }
 
     // ─── AI Engine State ─────────────────────────────────
     private val _isModelLoaded = MutableStateFlow(false)
@@ -61,6 +105,9 @@ class HelplyViewModel @Inject constructor(
 
     private val _modelLoadProgress = MutableStateFlow(0f)
     val modelLoadProgress: StateFlow<Float> = _modelLoadProgress.asStateFlow()
+
+    private val _modelLoadError = MutableStateFlow<String?>(null)
+    val modelLoadError: StateFlow<String?> = _modelLoadError.asStateFlow()
 
     val downloadStates: StateFlow<Map<String, ModelDownloadManager.DownloadState>> =
         modelDownloadManager.downloadStates
@@ -104,39 +151,75 @@ class HelplyViewModel @Inject constructor(
         val userMsg = ChatMessage(sender = "User", text = userText)
         _chatMessages.value = _chatMessages.value + userMsg
 
-        val modelId = _selectedChatModelId.value
-        val modelConfig = ModelRegistry.getById(modelId) ?: ModelRegistry.QWEN_05B
-        val modelFile = modelRepository.getModelFile(modelId)
-        val fileSizeMb = if (modelFile != null && modelFile.exists()) modelFile.length() / (1024 * 1024) else modelConfig.sizeBytes / (1024 * 1024)
-        val binaryFileName = if (modelFile != null && modelFile.exists()) modelFile.name else modelConfig.fileName
+        val currentMode = _inferenceMode.value
 
         viewModelScope.launch {
-            if (gemmaEngine.getLoadedModelId() != modelId) {
-                val success = gemmaEngine.initializeModel(modelId) { }
-                _isModelLoaded.value = success
-                _loadedModelId.value = if (success) modelId else null
-            }
-
             val aiMsgId = java.util.UUID.randomUUID().toString()
-            val initialAiMsg = ChatMessage(
-                id = aiMsgId,
-                sender = "AI",
-                text = "...",
-                modelName = modelConfig.name,
-                modelFileSizeMb = fileSizeMb,
-                binaryFileName = binaryFileName,
-                hardwareDelegate = "Hexagon NPU / OpenCL GPU"
-            )
-            _chatMessages.value = _chatMessages.value + initialAiMsg
 
-            var accumulatedText = ""
-            gemmaEngine.generateStreamingResponse(prompt = userText, modelId = modelId).collect { chunk ->
-                accumulatedText += chunk
-                _chatMessages.value = _chatMessages.value.map { msg ->
-                    if (msg.id == aiMsgId) msg.copy(text = accumulatedText) else msg
+            if (currentMode == InferenceMode.CLOUD_API) {
+                // ─── Cloud API Path ──────────────────────
+                val cloudModel = cloudApiEngine.getModelId()
+                val initialAiMsg = ChatMessage(
+                    id = aiMsgId,
+                    sender = "AI",
+                    text = "...",
+                    modelName = "☁️ $cloudModel",
+                    hardwareDelegate = "Cloud API"
+                )
+                _chatMessages.value = _chatMessages.value + initialAiMsg
+
+                var accumulatedText = ""
+                cloudApiEngine.generateStreamingResponse(prompt = userText).collect { chunk ->
+                    accumulatedText += chunk
+                    val cleanedText = cleanThinkTags(accumulatedText)
+                    _chatMessages.value = _chatMessages.value.map { msg ->
+                        if (msg.id == aiMsgId) msg.copy(text = cleanedText.ifEmpty { "..." }) else msg
+                    }
+                }
+            } else {
+                // ─── On-Device Path ─────────────────────
+                val modelId = _selectedChatModelId.value
+                val modelConfig = ModelRegistry.getById(modelId) ?: ModelRegistry.QWEN_05B
+                val modelFile = modelRepository.getModelFile(modelId)
+                val fileSizeMb = if (modelFile != null && modelFile.exists()) modelFile.length() / (1024 * 1024) else modelConfig.sizeBytes / (1024 * 1024)
+                val binaryFileName = if (modelFile != null && modelFile.exists()) modelFile.name else modelConfig.fileName
+
+                if (gemmaEngine.getLoadedModelId() != modelId) {
+                    val success = gemmaEngine.initializeModel(modelId) { }
+                    _isModelLoaded.value = success
+                    _loadedModelId.value = if (success) modelId else null
+                }
+
+                val initialAiMsg = ChatMessage(
+                    id = aiMsgId,
+                    sender = "AI",
+                    text = "...",
+                    modelName = "📱 ${modelConfig.name}",
+                    modelFileSizeMb = fileSizeMb,
+                    binaryFileName = binaryFileName,
+                    hardwareDelegate = "On-Device CPU/GPU"
+                )
+                _chatMessages.value = _chatMessages.value + initialAiMsg
+
+                var accumulatedText = ""
+                gemmaEngine.generateStreamingResponse(prompt = userText, modelId = modelId).collect { chunk ->
+                    accumulatedText += chunk
+                    val cleanedText = cleanThinkTags(accumulatedText)
+                    _chatMessages.value = _chatMessages.value.map { msg ->
+                        if (msg.id == aiMsgId) msg.copy(text = cleanedText.ifEmpty { "..." }) else msg
+                    }
                 }
             }
         }
+    }
+
+    private fun cleanThinkTags(input: String): String {
+        var cleaned = input.replace(Regex("<think>.*?</think>", RegexOption.DOT_MATCHES_ALL), "").trim()
+        val unclosedIndex = cleaned.lastIndexOf("<think>")
+        if (unclosedIndex != -1) {
+            cleaned = cleaned.substring(0, unclosedIndex).trim()
+        }
+        return cleaned
     }
 
     // ─── Agent Execution Trace ──────────────────────────
@@ -200,6 +283,12 @@ class HelplyViewModel @Inject constructor(
     private val _githubAccessToken = MutableStateFlow<String?>(null)
     val githubAccessToken: StateFlow<String?> = _githubAccessToken.asStateFlow()
 
+    private val _githubClientId = MutableStateFlow("")
+    val githubClientId: StateFlow<String> = _githubClientId.asStateFlow()
+
+    private val _githubClientSecret = MutableStateFlow("")
+    val githubClientSecret: StateFlow<String> = _githubClientSecret.asStateFlow()
+
     private val _isLoggingInGithub = MutableStateFlow(false)
     val isLoggingInGithub: StateFlow<Boolean> = _isLoggingInGithub.asStateFlow()
 
@@ -210,6 +299,13 @@ class HelplyViewModel @Inject constructor(
             val savedToken = prefs.getString("github_access_token", null)
             val savedUsername = prefs.getString("github_username", null)
             
+            val savedClientId = prefs.getString("custom_client_id", "") ?: ""
+            val savedClientSecret = prefs.getString("custom_client_secret", "") ?: ""
+            _githubClientId.value = savedClientId
+            _githubClientSecret.value = savedClientSecret
+            GitHubAppManager.customClientId = savedClientId
+            GitHubAppManager.customClientSecret = savedClientSecret
+
             val target = if (!savedToken.isNullOrBlank()) savedToken else savedUsername
             if (!target.isNullOrBlank()) {
                 android.util.Log.d("HELPLY_OAUTH", "Auto-loading GitHub session for target: ${target.take(8)}")
@@ -276,6 +372,35 @@ class HelplyViewModel @Inject constructor(
         _isLoggingInGithub.value = false
         val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
+    }
+
+    fun saveGitHubConfig(clientId: String, clientSecret: String) {
+        val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("custom_client_id", clientId.trim())
+            .putString("custom_client_secret", clientSecret.trim())
+            .apply()
+        _githubClientId.value = clientId.trim()
+        _githubClientSecret.value = clientSecret.trim()
+        GitHubAppManager.customClientId = clientId.trim()
+        GitHubAppManager.customClientSecret = clientSecret.trim()
+    }
+
+    fun saveMasterResume(resumeText: String) {
+        viewModelScope.launch {
+            val existing = memoryDao.searchMemories("Master Resume")
+            existing.forEach {
+                if (it.type == "Resume") {
+                    memoryDao.deleteMemory(it.id)
+                }
+            }
+            addMemory(
+                title = "Master Resume",
+                type = "Resume",
+                description = resumeText,
+                source = "Manual"
+            )
+        }
     }
 
 
@@ -367,6 +492,7 @@ class HelplyViewModel @Inject constructor(
     fun initializeModel(modelId: String = _selectedChatModelId.value) {
         viewModelScope.launch {
             _modelLoadProgress.value = 0.05f
+            _modelLoadError.value = null
             if (_loadedModelId.value != null && _loadedModelId.value != modelId) {
                 gemmaEngine.unloadModel()
                 _isModelLoaded.value = false
@@ -377,6 +503,23 @@ class HelplyViewModel @Inject constructor(
             }
             _isModelLoaded.value = success
             _loadedModelId.value = if (success) modelId else null
+            if (!success) {
+                _modelLoadProgress.value = 0f
+                _modelLoadError.value = "Failed to load model. Ensure storage space is sufficient and model weights are not corrupt."
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "⚠️ Model Load Failed! Check storage/logs.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } else {
+                _modelLoadError.value = null
+            }
+        }
+    }
+
+    fun setHardwareAcceleration(npu: Boolean, gpu: Boolean) {
+        gemmaEngine.setHardwareAcceleration(npu, gpu)
+        val loaded = _loadedModelId.value
+        if (loaded != null) {
+            initializeModel(loaded)
         }
     }
 
@@ -427,6 +570,17 @@ class HelplyViewModel @Inject constructor(
         _lastToolResult.value = null
     }
 
+    private suspend fun generateAICompletion(prompt: String, systemPrompt: String = "You are an intelligent AI assistant."): String {
+        val currentMode = _inferenceMode.value
+        val rawCompletion = if (currentMode == InferenceMode.CLOUD_API) {
+            cloudApiEngine.generateResponse(prompt, systemPrompt)
+        } else {
+            val modelId = _selectedChatModelId.value
+            gemmaEngine.generateResponse(prompt, systemPrompt, modelId)
+        }
+        return cleanThinkTags(rawCompletion)
+    }
+
     // ─── Feature 1: Autonomous Academic Pipeline ────────
     fun runAutonomousAcademicAgent(inputText: String) {
         viewModelScope.launch {
@@ -436,7 +590,8 @@ class HelplyViewModel @Inject constructor(
             val result = AutonomousAcademicAgent.executeAcademicPipeline(
                 context = context,
                 rawTaskText = inputText,
-                subject = "Computer Science & AI"
+                subject = "Computer Science & AI",
+                aiGenerator = { p, s -> generateAICompletion(p, s) }
             )
 
             _autonomousPipelineResult.value = result
@@ -455,8 +610,13 @@ class HelplyViewModel @Inject constructor(
     // ─── Feature 2: College Email Scanner & 5-Day App Lock ───
     fun scanCollegeEmails() {
         viewModelScope.launch {
+            _isAgentRunning.value = true
             val emailsList = _emails.value
-            val scan = EmailScannerEngine.analyzeEmails(emailsList)
+            val (updatedEmails, scan) = EmailScannerEngine.analyzeEmails(
+                emails = emailsList,
+                aiGenerator = { p, s -> generateAICompletion(p, s) }
+            )
+            _emails.value = updatedEmails
 
             val summaryLines = mutableListOf<String>()
             summaryLines.add("📧 College Email Ingestion & Circular Scan Complete:")
@@ -486,6 +646,7 @@ class HelplyViewModel @Inject constructor(
             }
 
             _emailScanSummary.value = summaryLines.joinToString("\n")
+            _isAgentRunning.value = false
         }
     }
 
@@ -515,13 +676,24 @@ class HelplyViewModel @Inject constructor(
     // ─── Feature 3: Company 360° & Resume Shortlist Engine ───
     fun analyzeCompanyShortlist(companyName: String, candidateResume: String) {
         viewModelScope.launch {
+            _isAgentRunning.value = true
             _companyAnalysis.value = null
+            _atsResult.value = null
             delay(400)
-            val analysis = CompanyIntelligenceEngine.getCompany360(companyName, candidateResume)
+            val analysis = CompanyIntelligenceEngine.getCompany360(
+                queryName = companyName,
+                candidateResumeText = candidateResume,
+                aiGenerator = { p, s -> generateAICompletion(p, s) }
+            )
             _companyAnalysis.value = analysis
 
             // Also calculate traditional ATS score
-            _atsResult.value = ATSEngine.evaluateResume(candidateResume, analysis.company.keyTechStack.joinToString(", "))
+            _atsResult.value = ATSEngine.evaluateResume(
+                resumeText = candidateResume,
+                jobDescription = analysis.company.keyTechStack.joinToString(", "),
+                aiGenerator = { p, s -> generateAICompletion(p, s) }
+            )
+            _isAgentRunning.value = false
         }
     }
 

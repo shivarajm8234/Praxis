@@ -1,6 +1,7 @@
 package ai.helply.app.di
 
 import android.content.Context
+import ai.helply.app.ai.CloudApiEngine
 import ai.helply.app.ai.GemmaEngineManager
 import ai.helply.app.ai.ModelDownloadManager
 import ai.helply.app.ai.ModelRepository
@@ -71,7 +72,19 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideToolRegistry(db: HelplyDatabase): ToolRegistry {
-        return ToolRegistry(db)
+    fun provideCloudApiEngine(@ApplicationContext context: Context): CloudApiEngine {
+        return CloudApiEngine(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideToolRegistry(
+        db: HelplyDatabase,
+        @ApplicationContext context: Context,
+        cloudApiEngine: CloudApiEngine,
+        gemmaEngine: GemmaEngineManager
+    ): ToolRegistry {
+        return ToolRegistry(db, context, cloudApiEngine, gemmaEngine)
     }
 }
+
