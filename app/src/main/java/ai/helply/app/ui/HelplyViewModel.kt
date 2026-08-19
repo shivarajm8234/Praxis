@@ -204,28 +204,31 @@ class HelplyViewModel @Inject constructor(
     val isLoggingInGithub: StateFlow<Boolean> = _isLoggingInGithub.asStateFlow()
 
     init {
-        // Auto-load saved GitHub session or default user
+        // Auto-load saved GitHub session if present
         viewModelScope.launch {
             val prefs = context.getSharedPreferences("helply_github", Context.MODE_PRIVATE)
             val savedToken = prefs.getString("github_access_token", null)
-            val savedUsername = prefs.getString("github_username", "shivarajm8234") ?: "shivarajm8234"
+            val savedUsername = prefs.getString("github_username", null)
             
             val target = if (!savedToken.isNullOrBlank()) savedToken else savedUsername
-            android.util.Log.d("HELPLY_OAUTH", "Auto-loading GitHub session for target: ${target.take(8)}")
-            val user = GitHubAppManager.fetchUserProfile(target)
-            if (user != null) {
-                _githubUser.value = user
-                _githubAccessToken.value = savedToken
-                val repos = GitHubAppManager.fetchUserRepositories(target)
-                _githubRepos.value = repos
+            if (!target.isNullOrBlank()) {
+                android.util.Log.d("HELPLY_OAUTH", "Auto-loading GitHub session for target: ${target.take(8)}")
+                val user = GitHubAppManager.fetchUserProfile(target)
+                if (user != null) {
+                    _githubUser.value = user
+                    _githubAccessToken.value = savedToken
+                    val repos = GitHubAppManager.fetchUserRepositories(target)
+                    _githubRepos.value = repos
+                }
             }
         }
     }
 
-    fun connectGitHubAccount(userInput: String = "shivarajm8234") {
+    fun connectGitHubAccount(userInput: String) {
+        if (userInput.isBlank()) return
         viewModelScope.launch {
             _isLoggingInGithub.value = true
-            val target = if (userInput.isBlank()) "shivarajm8234" else userInput.trim()
+            val target = userInput.trim()
             val user = GitHubAppManager.fetchUserProfile(target)
             if (user != null) {
                 _githubUser.value = user
@@ -577,11 +580,12 @@ class HelplyViewModel @Inject constructor(
             addDeployLog("✅ HTML bundle generated (${html.length} characters)")
             delay(300)
 
-            addDeployLog("🚀 Authenticating with GitHub App Private Key...")
+            val ownerName = _githubUser.value?.login ?: GitHubAppManager.DEFAULT_OWNER
             GitHubAppManager.syncAndDeployPortfolio(
                 portfolioHtml = html,
                 repoName = "portfolio",
-                owner = "shivarajm8234",
+                owner = ownerName,
+                userToken = _githubAccessToken.value,
                 onLog = { logMsg -> addDeployLog(logMsg) }
             )
             addDeployLog("✅ Portfolio deployment pipeline finished successfully!")

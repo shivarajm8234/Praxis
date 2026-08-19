@@ -246,7 +246,7 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
             val githubUser by viewModel.githubUser.collectAsState()
             val githubRepos by viewModel.githubRepos.collectAsState()
             val isLoggingIn by viewModel.isLoggingInGithub.collectAsState()
-            var githubInput by remember { mutableStateOf("shivarajm8234") }
+            var githubInput by remember { mutableStateOf("") }
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -292,10 +292,10 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Login with GitHub via Chrome Custom Tab
+                        // Method 1: Login via GitHub OAuth (Forces account picker)
                         Button(
                             onClick = {
-                                val authUrl = "https://github.com/login/oauth/authorize?client_id=${ai.helply.app.domain.GitHubAppManager.CLIENT_ID}&redirect_uri=helply%3A%2F%2Foauth%2Fcallback&scope=repo%20user"
+                                val authUrl = "https://github.com/login/oauth/authorize?client_id=${ai.helply.app.domain.GitHubAppManager.CLIENT_ID}&redirect_uri=helply%3A%2F%2Foauth%2Fcallback&scope=repo%20user&prompt=select_account"
                                 val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
                                     .setShowTitle(true)
                                     .build()
@@ -305,10 +305,46 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292F))
                         ) {
-                            Text(if (isLoggingIn) "⏳ Authenticating..." else "🔐 Login with GitHub", color = Color.White)
+                            Text(if (isLoggingIn) "⏳ Authenticating..." else "🔐 Login with GitHub (OAuth)", color = Color.White)
                         }
 
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(12.dp))
 
+                        Text(
+                            text = "OR CONNECT VIA USERNAME / PAT:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = githubInput,
+                                onValueChange = { githubInput = it },
+                                placeholder = { Text("GitHub username or PAT token") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    if (githubInput.isNotBlank()) {
+                                        viewModel.connectGitHubAccount(githubInput)
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = githubInput.isNotBlank() && !isLoggingIn
+                            ) {
+                                Text("Connect")
+                            }
+                        }
                     } else {
                         // User Logged In Display
                         Row(
@@ -354,7 +390,7 @@ fun ProfileScreen(viewModel: HelplyViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("Disconnect", fontSize = 11.sp)
+                                Text("Switch / Logout", fontSize = 11.sp)
                             }
                         }
 
