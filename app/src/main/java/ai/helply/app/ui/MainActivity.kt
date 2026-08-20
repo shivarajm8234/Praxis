@@ -1,9 +1,13 @@
 package ai.helply.app.ui
 
+import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import ai.helply.app.BuildConfig
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Send
@@ -70,6 +75,23 @@ class MainActivity : ComponentActivity() {
         androidx.lifecycle.ViewModelProvider(this)[HelplyViewModel::class.java]
     }
 
+    /** Launcher for Gmail OAuth browser flow. Result dispatched to ViewModel. */
+    private val gmailAuthLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result: ActivityResult ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data ?: return@registerForActivityResult
+            viewModel.handleGmailOAuthResult(data, BuildConfig.GOOGLE_OAUTH_CLIENT_ID)
+        } else {
+            android.util.Log.w("GMAIL_OAUTH", "Gmail OAuth cancelled or failed (resultCode=${result.resultCode})")
+        }
+    }
+
+    /** Called from EmailIntelligenceScreen to kick off Gmail sign-in. */
+    fun launchGmailOAuth() {
+        val intent = viewModel.getGmailAuthIntent(BuildConfig.GOOGLE_OAUTH_CLIENT_ID)
+        gmailAuthLauncher.launch(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,6 +143,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Academics : Screen("academics", "Academics", Icons.Default.Edit)
     object NotepadMemory : Screen("memory", "Memory", Icons.Default.Star)
     object Placements : Screen("placements", "Placements", Icons.Default.Person)
+    object EmailIntelligence : Screen("email_intelligence", "Emails", Icons.Default.Email)
     object Settings : Screen("settings", "AI Models", Icons.Default.Settings)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
     object Portfolio : Screen("portfolio", "Portfolio", Icons.Default.Share)
@@ -140,6 +163,7 @@ fun HelplyAppNavigation(viewModel: HelplyViewModel = hiltViewModel()) {
         Screen.Academics,
         Screen.NotepadMemory,
         Screen.Placements,
+        Screen.EmailIntelligence,
         Screen.Settings
     )
 
@@ -283,6 +307,7 @@ fun HelplyAppNavigation(viewModel: HelplyViewModel = hiltViewModel()) {
             composable(Screen.Academics.route) { AcademicsScreen(viewModel) }
             composable(Screen.NotepadMemory.route) { MemoryScreen(viewModel) }
             composable(Screen.Placements.route) { PlacementScreen(viewModel) }
+            composable(Screen.EmailIntelligence.route) { ai.helply.app.ui.screens.EmailIntelligenceScreen(viewModel) }
             composable(Screen.Settings.route) { SettingsScreen(viewModel) }
             composable(Screen.Profile.route) { ProfileScreen(viewModel) }
             composable(Screen.Portfolio.route) { PortfolioScreen(viewModel) }

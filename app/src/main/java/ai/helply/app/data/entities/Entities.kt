@@ -71,21 +71,30 @@ data class PortfolioProjectEntity(
 @Entity(tableName = "exams")
 data class ExamEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    val subject: String,
-    val examDate: Long,
-    val venue: String,
+    val subject: String,                        // "End-Semester Examinations — CSE Dept"
+    val examStartDate: Long,                    // First paper date (millis)
+    val examEndDate: Long,                      // Last paper date (millis)
+    val lockdownStartDate: Long,               // examStartDate - 5 days (millis)
+    val venue: String = "",
     val priority: String = "CRITICAL",
-    val focusModeScheduled: Boolean = true
+    val circularEmailId: String = "",           // FK back to emails.id
+    val isLockActive: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "emails")
 data class EmailEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val imapUid: Long = 0L,                    // IMAP UID for deduplication
     val sender: String,
     val subject: String,
     val snippet: String,
-    val category: String, // EXAMINATION, ASSIGNMENT, PLACEMENT, etc.
-    val priority: String,
+    val fullBody: String = "",                  // Full decoded MIME body for AI analysis
+    val category: String,                       // EXAM_CIRCULAR, ASSIGNMENT_DUE, PLACEMENT_DRIVE, etc.
+    val priority: String,                       // CRITICAL_RED, HIGH_ORANGE, MEDIUM_YELLOW, LOW_GREEN
+    val aiSummary: String = "",                 // 2-sentence AI-generated summary
+    val detectedExamStartDate: Long? = null,    // Parsed exam start date (millis)
+    val detectedExamEndDate: Long? = null,      // Parsed exam end date (millis)
     val receivedAt: Long = System.currentTimeMillis(),
-    val isProcessed: Boolean = true
+    val isProcessed: Boolean = false
 )

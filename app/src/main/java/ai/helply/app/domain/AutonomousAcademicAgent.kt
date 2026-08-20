@@ -79,7 +79,7 @@ object AutonomousAcademicAgent {
         // Trigger System Notification
         val notificationTitle = "🎓 AI Academic Agent: Task Completed!"
         val notificationMsg = "PPT ($slideCount slides) & PDF Research Report generated for '$extractedTopic'. Tap to review."
-        NotificationHelper.sendNotification(context, notificationTitle, notificationMsg)
+        NotificationHelper(context).sendNotification(title = notificationTitle, message = notificationMsg)
 
         return AutonomousPipelineResult(
             title = extractedTopic,

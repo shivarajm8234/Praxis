@@ -19,6 +19,12 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Exam Lock: Alarms & Boot Restore -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".HelplyApplication"
@@ -39,26 +45,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- OAuth Redirect: helply://oauth/callback -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="helply"
-                    android:host="oauth"
-                    android:pathPrefix="/callback" />
-            </intent-filter>
 
-            <!-- OAuth Redirect: ai.helply.oauth://callback -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="ai.helply.oauth"
-                    android:host="callback" />
-            </intent-filter>
+
+
         </activity>
 
         <activity
@@ -72,6 +61,17 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="ai.helply.app.TEST_INFERENCE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Exam Lockdown: Boot restore + AlarmManager alarms -->
+        <receiver
+            android:name=".core.LockdownBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="ai.helply.LOCK_START" />
+                <action android:name="ai.helply.LOCK_END" />
             </intent-filter>
         </receiver>
     </application>

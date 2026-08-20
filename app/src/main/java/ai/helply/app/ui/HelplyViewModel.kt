@@ -7,11 +7,18 @@ import ai.helply.app.ai.CloudApiEngine
 import ai.helply.app.ai.GemmaEngineManager
 import ai.helply.app.ai.InferenceMode
 import ai.helply.app.core.AppLockEnforcer
+import ai.helply.app.core.EmailMonitorManager
+import ai.helply.app.core.LockdownScheduler
 import ai.helply.app.core.NotificationHelper
 import ai.helply.app.data.db.AcademicDao
+import ai.helply.app.data.db.EmailDao
+import ai.helply.app.data.db.ExamDao
 import ai.helply.app.data.db.MemoryDao
 import ai.helply.app.data.db.PlacementDao
 import ai.helply.app.data.entities.*
+import ai.helply.app.data.remote.GmailAuthResult
+import ai.helply.app.data.remote.GmailOAuthManager
+import ai.helply.app.data.remote.GmailTokenStore
 import ai.helply.app.domain.*
 import ai.helply.app.tools.ToolRegistry
 import ai.helply.app.tools.ToolResult
@@ -24,8 +31,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,8 +61,35 @@ class HelplyViewModel @Inject constructor(
     private val toolRegistry: ToolRegistry,
     private val memoryDao: MemoryDao,
     private val academicDao: AcademicDao,
-    private val placementDao: PlacementDao
+    private val placementDao: PlacementDao,
+    // ─── Email & Exam DB ─────────────────────────────────────────────────────
+    private val emailDao: EmailDao,
+    private val examDao: ExamDao,
+    // ─── Gmail OAuth ────────────────────────────────────────
+    private val gmailTokenStore: GmailTokenStore,
+    private val gmailOAuthManager: GmailOAuthManager,
+    private val lockdownScheduler: LockdownScheduler,
+    private val emailMonitorManager: EmailMonitorManager,
+    private val notificationHelper: NotificationHelper
 ) : ViewModel() {
+
+    // ─── Gmail Connection State ────────────────────────────
+    sealed class GmailConnectionState {
+        object Disconnected : GmailConnectionState()
+        object Authorizing : GmailConnectionState()
+        data class Connected(val email: String, val displayName: String) : GmailConnectionState()
+        data class Error(val message: String) : GmailConnectionState()
+    }
+
+    private val _gmailConnectionState = MutableStateFlow<GmailConnectionState>(
+        if (gmailTokenStore.isConnected())
+            GmailConnectionState.Connected(
+                gmailTokenStore.getConnectedEmail() ?: "",
+                gmailTokenStore.getDisplayName() ?: ""
+            )
+        else GmailConnectionState.Disconnected
+    )
+    val gmailConnectionState: StateFlow<GmailConnectionState> = _gmailConnectionState.asStateFlow()
 
     // ─── Inference Mode State ────────────────────────────
     private val _inferenceMode = MutableStateFlow(cloudApiEngine.getInferenceMode())
@@ -246,9 +282,15 @@ class HelplyViewModel @Inject constructor(
     private val _autonomousPipelineResult = MutableStateFlow<AutonomousPipelineResult?>(null)
     val autonomousPipelineResult: StateFlow<AutonomousPipelineResult?> = _autonomousPipelineResult.asStateFlow()
 
-    // ─── College Email & Lock State ─────────────────────
-    private val _emails = MutableStateFlow<List<CollegeEmail>>(emptyList())
-    val emails: StateFlow<List<CollegeEmail>> = _emails.asStateFlow()
+    // ─── College Email & Lock State (Room-backed) ────────
+    val emails: StateFlow<List<EmailEntity>> = emailDao.getAllEmails()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val examCirculars: StateFlow<List<EmailEntity>> = emailDao.getExamCirculars()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allExams: StateFlow<List<ExamEntity>> = examDao.getAllExams()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _examLockState = MutableStateFlow(ExamLockState())
     val examLockState: StateFlow<ExamLockState> = _examLockState.asStateFlow()
@@ -413,31 +455,77 @@ class HelplyViewModel @Inject constructor(
                 _memories.value = list
             }
         }
-        _emails.value = emptyList()
 
         // Sync local model installation status on launch
         refreshInstalledModels()
+
+        // Restore persisted exam lock state (survives app kill + reboot)
+        viewModelScope.launch {
+            lockdownScheduler.setNotificationHelper(notificationHelper)
+            val restoredLock = lockdownScheduler.restoreLockStateIfActive()
+            _examLockState.value = restoredLock
+        }
+
+        // Auto-resume email monitoring if Gmail was previously connected
+        if (gmailTokenStore.isConnected()) {
+            emailMonitorManager.startMonitoring()
+        }
 
         // Continuous App Lock Monitor Loop
         startAppLockEnforcementLoop()
     }
 
+    // ─── Gmail OAuth Account Management ──────────────────
+
+    /** Returns an Intent to launch the Google OAuth browser flow. Call startActivityForResult with RC_AUTH. */
+    fun getGmailAuthIntent(clientId: String): android.content.Intent =
+        gmailOAuthManager.getAuthIntent(clientId)
+
+    /** Call this from onActivityResult / ActivityResultCallback after the OAuth browser returns. */
+    fun handleGmailOAuthResult(intent: android.content.Intent, clientId: String) {
+        viewModelScope.launch {
+            _gmailConnectionState.value = GmailConnectionState.Authorizing
+            when (val result = gmailOAuthManager.handleAuthResponse(intent, clientId)) {
+                is GmailAuthResult.Success -> {
+                    _gmailConnectionState.value =
+                        GmailConnectionState.Connected(result.email, result.displayName)
+                    emailMonitorManager.startMonitoring()
+                    emailMonitorManager.triggerImmediatePoll()
+                }
+                is GmailAuthResult.Error -> {
+                    _gmailConnectionState.value = GmailConnectionState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    fun disconnectGmailAccount() {
+        gmailTokenStore.clearTokens()
+        emailMonitorManager.stopMonitoring()
+        _gmailConnectionState.value = GmailConnectionState.Disconnected
+    }
+
+    fun syncEmailsNow() {
+        emailMonitorManager.triggerImmediatePoll()
+    }
+
+    // Legacy helper kept for test/demo purposes — real data comes from IMAP pipeline
     fun addCollegeEmail(sender: String, subject: String, body: String, isExamCircular: Boolean = false) {
-        val category = if (isExamCircular) EmailCategory.EXAM_CIRCULAR else EmailCategory.GENERAL_ANNOUNCEMENT
-        val priority = if (isExamCircular) PriorityLevel.CRITICAL_RED else PriorityLevel.LOW_GREEN
-        val newEmail = CollegeEmail(
-            id = "em_${System.currentTimeMillis()}",
-            sender = sender,
-            subject = subject,
-            snippet = if (body.length > 80) body.take(80) + "..." else body,
-            fullBody = body,
-            timestamp = "Just Now",
-            category = category,
-            priority = priority,
-            detectedExamDate = if (isExamCircular) "Upcoming Exam" else null,
-            examDateMillis = if (isExamCircular) System.currentTimeMillis() + (5 * 86400000L) else null
-        )
-        _emails.value = _emails.value + newEmail
+        viewModelScope.launch {
+            val category = if (isExamCircular) EmailCategory.EXAM_CIRCULAR.name else EmailCategory.GENERAL_ANNOUNCEMENT.name
+            val priority = if (isExamCircular) PriorityLevel.CRITICAL_RED.name else PriorityLevel.LOW_GREEN.name
+            val entity = EmailEntity(
+                sender = sender,
+                subject = subject,
+                snippet = if (body.length > 120) body.take(120) + "..." else body,
+                fullBody = body,
+                category = category,
+                priority = priority,
+                aiSummary = if (isExamCircular) "This is an exam circular. Lockdown will be activated 5 days before the exam." else "",
+                detectedExamStartDate = if (isExamCircular) System.currentTimeMillis() + (5 * 86400000L) else null
+            )
+            emailDao.insertEmail(entity)
+        }
     }
 
     private fun startAppLockEnforcementLoop() {
@@ -611,12 +699,11 @@ class HelplyViewModel @Inject constructor(
     fun scanCollegeEmails() {
         viewModelScope.launch {
             _isAgentRunning.value = true
-            val emailsList = _emails.value
+            val dbEmails = emailDao.getAllEmails()
             val (updatedEmails, scan) = EmailScannerEngine.analyzeEmails(
-                emails = emailsList,
+                emails = emptyList(),
                 aiGenerator = { p, s -> generateAICompletion(p, s) }
             )
-            _emails.value = updatedEmails
 
             val summaryLines = mutableListOf<String>()
             summaryLines.add("📧 College Email Ingestion & Circular Scan Complete:")
@@ -634,11 +721,11 @@ class HelplyViewModel @Inject constructor(
                     examTitle = scan.examTitle ?: "End-Semester Examinations",
                     examDateMillis = System.currentTimeMillis() + (5 * 86400000L),
                     daysRemaining = scan.daysUntilExam,
-                    lockedApps = ExamLockState.defaultApps()
+                    lockedApps = SocialMediaLockManager.getDefaultLockedApps()
                 )
 
                 // Trigger Notification
-                NotificationHelper.sendNotification(
+                notificationHelper.sendNotification(
                     context = context,
                     title = "🚨 Exam Lock Activated (5-Day Rule)",
                     message = "Exam circular detected for ${scan.examDate}. Social media apps locked to ensure focus."

@@ -4,6 +4,8 @@ import androidx.room.*
 import ai.helply.app.data.entities.*
 import kotlinx.coroutines.flow.Flow
 
+// ─── Memory DAO ─────────────────────────────────────────────────────────────
+
 @Dao
 interface MemoryDao {
     @Query("SELECT * FROM academic_memory ORDER BY createdAt DESC")
@@ -25,6 +27,8 @@ interface MemoryDao {
     suspend fun deleteAllMemories()
 }
 
+// ─── Academic / Assignment DAO ───────────────────────────────────────────────
+
 @Dao
 interface AcademicDao {
     @Query("SELECT * FROM assignments ORDER BY deadline ASC")
@@ -32,13 +36,9 @@ interface AcademicDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAssignment(assignment: AssignmentEntity)
-
-    @Query("SELECT * FROM exams ORDER BY examDate ASC")
-    fun getAllExams(): Flow<List<ExamEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertExam(exam: ExamEntity)
 }
+
+// ─── Placement DAO ───────────────────────────────────────────────────────────
 
 @Dao
 interface PlacementDao {
@@ -55,6 +55,8 @@ interface PlacementDao {
     suspend fun insertResumeVersion(version: ResumeVersionEntity)
 }
 
+// ─── Room Database ───────────────────────────────────────────────────────────
+
 @Database(
     entities = [
         AcademicMemoryEntity::class,
@@ -65,11 +67,13 @@ interface PlacementDao {
         ExamEntity::class,
         EmailEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class HelplyDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun academicDao(): AcademicDao
     abstract fun placementDao(): PlacementDao
+    abstract fun emailDao(): EmailDao
+    abstract fun examDao(): ExamDao
 }

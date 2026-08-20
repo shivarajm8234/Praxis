@@ -76,12 +76,15 @@ class ToolRegistry @Inject constructor(
                 "enableFocusMode" -> {
                     val subject = params["subject"] ?: "Upcoming Examination"
                     val durationDays = params["durationDays"]?.toIntOrNull() ?: 5
+                    val examStart = System.currentTimeMillis() + (durationDays * 86400000L)
                     val exam = ExamEntity(
                         subject = subject,
-                        examDate = System.currentTimeMillis() + (durationDays * 86400000L),
+                        examStartDate = examStart,
+                        examEndDate = examStart,
+                        lockdownStartDate = examStart - (5 * 86400000L),
                         venue = params["venue"] ?: "Main Examination Hall"
                     )
-                    db.academicDao().insertExam(exam)
+                    db.examDao().insertExam(exam)
                     ToolResult.Success("Focus Mode & Exam Schedule created for $subject ($durationDays days count-down).")
                 }
 
